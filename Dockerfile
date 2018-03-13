@@ -54,6 +54,7 @@ RUN apt-get update -q --fix-missing && \
     postfix-ldap \
     postfix-pcre \
     postfix-policyd-spf-python \
+    postfix-mysql \
     pyzor \
     razor \
     ripole \
@@ -83,6 +84,7 @@ RUN apt-get update -q --fix-missing && \
     dovecot-managesieved \
     dovecot-pop3d \
     dovecot-sieve \
+    dovecot-mysql \
     && \
   apt-get autoclean && \
   rm -rf /var/lib/apt/lists/* && \
