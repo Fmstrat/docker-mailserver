@@ -27,6 +27,9 @@ DEFAULT_VARS["POSTMASTER_ADDRESS"]="${POSTMASTER_ADDRESS:="postmaster@domain.com
 DEFAULT_VARS["POSTSCREEN_ACTION"]="${POSTSCREEN_ACTION:="enforce"}"
 DEFAULT_VARS["SPOOF_PROTECTION"]="${SPOOF_PROTECTION:="0"}"
 DEFAULT_VARS["TLS_LEVEL"]="${TLS_LEVEL:="modern"}"
+DEFAULT_VARS["ENABLE_SRS"]="${ENABLE_SRS:="0"}"
+DEFAULT_VARS["REPORT_RECIPIENT"]="${REPORT_RECIPIENT:="0"}"
+DEFAULT_VARS["REPORT_INTERVAL"]="${REPORT_INTERVAL:="daily"}"
 ##########################################################################
 # << DEFAULT VARS
 ##########################################################################
@@ -124,6 +127,11 @@ function register_functions() {
 		_register_setup_function "_setup_spoof_protection"
 	fi
 
+	if [ "$ENABLE_SRS" = 1 ];  then
+		_register_setup_function "_setup_SRS"
+		_register_start_daemon "_start_daemons_postsrsd"
+	fi
+
   _register_setup_function "_setup_postfix_access_control"
 
 	if [ ! -z "$AWS_SES_HOST" -a ! -z "$AWS_SES_USERPASS" ]; then
@@ -135,6 +143,11 @@ function register_functions() {
 	fi
 
   _register_setup_function "_setup_environment"
+  _register_setup_function "_setup_logrotate"
+
+  if [ "$REPORT_RECIPIENT" != 0 ]; then
+  	_register_setup_function "_setup_mail_summary"
+  fi
 
 	################### << setup funcs
 
@@ -700,6 +713,8 @@ function _setup_postfix_aliases() {
 	echo -n > /etc/postfix/virtual
 	echo -n > /etc/postfix/regexp
 	if [ -f /tmp/docker-mailserver/postfix-virtual.cf ]; then
+    # fixing old virtual user file
+	  [[ $(grep ",$" /tmp/docker-mailserver/postfix-virtual.cf) ]] && sed -i -e "s/, /,/g" -e "s/,$//g" /tmp/docker-mailserver/postfix-virtual.cf
 		# Copying virtual file
 		cp -f /tmp/docker-mailserver/postfix-virtual.cf /etc/postfix/virtual
 		while read from to
@@ -722,6 +737,14 @@ function _setup_postfix_aliases() {
 		s/$/ pcre:\/etc\/postfix\/regexp/
 		}' /etc/postfix/main.cf
 	fi
+}
+
+function _setup_SRS() {
+	notify 'task' 'Setting up SRS'
+	postconf -e "sender_canonical_maps = tcp:localhost:10001"
+	postconf -e "sender_canonical_classes = envelope_sender"
+	postconf -e "recipient_canonical_maps = tcp:localhost:10002"
+	postconf -e "recipient_canonical_classes = envelope_recipient,header_recipient"
 }
 
 function _setup_dkim() {
@@ -752,23 +775,23 @@ function _setup_ssl() {
   case $TLS_LEVEL in
     "modern" )
       # Postfix configuration
-      sed -i -r 's/^smtpd_tls_mandatory_protocols=.*$/smtpd_tls_mandatory_protocols=!SSLv2,!SSLv3,!TLSv1,!TLSv1.1/' /etc/postfix/main.cf
-      sed -i -r 's/^smtpd_tls_protocols=.*$/smtpd_tls_protocols=!SSLv2,!SSLv3,!TLSv1,!TLSv1.1/' /etc/postfix/main.cf
-      sed -i -r 's/^smtp_tls_protocols=.*$/smtp_tls_protocols=!SSLv2,!SSLv3,!TLSv1,!TLSv1.1/' /etc/postfix/main.cf
-      sed -i -r 's/^tls_high_cipherlist=.*$/tls_high_cipherlist=ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256/' /etc/postfix/main.cf
+      sed -i -r 's/^smtpd_tls_mandatory_protocols =.*$/smtpd_tls_mandatory_protocols = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1/' /etc/postfix/main.cf
+      sed -i -r 's/^smtpd_tls_protocols =.*$/smtpd_tls_protocols = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1/' /etc/postfix/main.cf
+      sed -i -r 's/^smtp_tls_protocols =.*$/smtp_tls_protocols = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1/' /etc/postfix/main.cf
+      sed -i -r 's/^tls_high_cipherlist =.*$/tls_high_cipherlist = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256/' /etc/postfix/main.cf
 
       # Dovecot configuration
-      sed -i -r 's/^ssl_protocols = .*$/ssl_protocols = !SSLv3,!TLSv1,!TLSv1.1/' /etc/dovecot/conf.d/10-ssl.conf
-      sed -i -r 's/^ssl_cipher_list = .*$/ssl_cipher_list = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256/' /etc/dovecot/conf.d/10-ssl.conf
+      sed -i -r 's/^ssl_protocols =.*$/ssl_protocols = !SSLv3,!TLSv1,!TLSv1.1/' /etc/dovecot/conf.d/10-ssl.conf
+      sed -i -r 's/^ssl_cipher_list =.*$/ssl_cipher_list = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256/' /etc/dovecot/conf.d/10-ssl.conf
 
       notify 'inf' "TLS configured with 'modern' ciphers"
     ;;
     "intermediate" )
       # Postfix configuration
-      sed -i -r 's/^smtpd_tls_mandatory_protocols=.*$/smtpd_tls_mandatory_protocols=!SSLv2,!SSLv3/' /etc/postfix/main.cf
-      sed -i -r 's/^smtpd_tls_protocols=.*$/smtpd_tls_protocols=!SSLv2,!SSLv3/' /etc/postfix/main.cf
-      sed -i -r 's/^smtp_tls_protocols=.*$/smtp_tls_protocols=!SSLv2,!SSLv3/' /etc/postfix/main.cf
-      sed -i -r 's/^tls_high_cipherlist=.*$/tls_high_cipherlist=ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA:!DSS/' /etc/postfix/main.cf
+      sed -i -r 's/^smtpd_tls_mandatory_protocols =.*$/smtpd_tls_mandatory_protocols = !SSLv2,!SSLv3/' /etc/postfix/main.cf
+      sed -i -r 's/^smtpd_tls_protocols =.*$/smtpd_tls_protocols = !SSLv2,!SSLv3/' /etc/postfix/main.cf
+      sed -i -r 's/^smtp_tls_protocols =.*$/smtp_tls_protocols = !SSLv2,!SSLv3/' /etc/postfix/main.cf
+      sed -i -r 's/^tls_high_cipherlist =.*$/tls_high_cipherlist = ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA:!DSS/' /etc/postfix/main.cf
 
       # Dovecot configuration
       sed -i -r 's/^ssl_protocols = .*$/ssl_protocols = !SSLv3/' /etc/dovecot/conf.d/10-ssl.conf
@@ -788,6 +811,8 @@ function _setup_ssl() {
 					KEY="privkey"
 				elif [ -e "/etc/letsencrypt/live/$HOSTNAME/key.pem" ]; then
 					KEY="key"
+				else
+					notify 'err' "Cannot access '/etc/letsencrypt/live/"$HOSTNAME"/privkey.pem' nor 'key.pem'"
 				fi
 				if [ -n "$KEY" ]; then
 					notify 'inf' "Adding $HOSTNAME SSL certificate"
@@ -801,7 +826,11 @@ function _setup_ssl() {
 					sed -i -e 's~ssl_key = </etc/dovecot/ssl/dovecot\.key~ssl_key = </etc/letsencrypt/live/'$HOSTNAME'/'"$KEY"'\.pem~g' /etc/dovecot/conf.d/10-ssl.conf
 
 					notify 'inf' "SSL configured with 'letsencrypt' certificates"
+				else
+					notify 'err' "Key filename not set!"
 				fi
+			else
+				notify 'err' "Cannot access '/etc/letsencrypt/live/"$HOSTNAME"/fullchain.pem'"
 			fi
 		;;
 	"custom" )
@@ -1077,6 +1106,34 @@ function _setup_elk_forwarder() {
 		> /etc/filebeat/filebeat.yml
 }
 
+function _setup_logrotate() {
+	notify 'inf' "Setting up logrotate"
+
+	LOGROTATE="/var/log/mail/mail.log\n{\n  compress\n  copytruncate\n  delaycompress\n"
+	case "$REPORT_INTERVAL" in
+		"daily" )
+			notify 'inf' "Setting postfix summary interval to daily"
+			LOGROTATE="$LOGROTATE  rotate 1\n  daily\n"
+			;;
+		"weekly" )
+			notify 'inf' "Setting postfix summary interval to weekly"
+			LOGROTATE="$LOGROTATE  rotate 1\n  weekly\n"
+			;;
+		"monthly" )
+			notify 'inf' "Setting postfix summary interval to monthly"
+			LOGROTATE="$LOGROTATE  rotate 1\n  monthly\n"
+			;;
+	esac
+	LOGROTATE="$LOGROTATE}"
+	echo -e "$LOGROTATE" > /etc/logrotate.d/maillog
+}
+
+function _setup_mail_summary() {
+	notify 'inf' "Enable postfix summary with recipient $REPORT_RECIPIENT"
+	[ "$REPORT_RECIPIENT" = 1 ] && REPORT_RECIPIENT=$POSTMASTER_ADDRESS
+	sed -i "s|}|  postrotate\n    /usr/local/bin/postfix-summary $HOSTNAME $REPORT_RECIPIENT\n  endscript\n}\n|" /etc/logrotate.d/maillog
+}
+
 function _setup_environment() {
     notify 'task' 'Setting up /etc/environment'
 
@@ -1247,6 +1304,11 @@ function _start_daemons_opendkim() {
 function _start_daemons_opendmarc() {
 	notify 'task' 'Starting opendmarc ' 'n'
     supervisorctl start opendmarc
+}
+
+function _start_daemons_postsrsd(){
+	notify 'task' 'Starting postsrsd ' 'n'
+	supervisorctl start postsrsd
 }
 
 function _start_daemons_postfix() {
