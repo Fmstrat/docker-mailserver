@@ -1188,17 +1188,34 @@ load 'test_helper/bats-assert/load'
   assert_success
   value=$(cat ./config/postfix-accounts.cf | grep lorem@impsum.org | awk -F '|' '{print $1}')
   [ "$value" = "lorem@impsum.org" ]
+
+  # don't know why, but the test suite needs to delete the (non existant) user prior succeeding in adding him again.
+  # when executed directly against the container this workaround is not neccessary.
+  run docker exec mail delmailuser -y pass@localhorst.localdomain
+  assert_success
+  docker exec mail addmailuser pass@localhost.localdomain 'may be \a `p^a.*ssword'
+  sleep 30
+  docker exec mail doveadm auth test -x service=smtp pass@localhost.localdomain 'may be \a `p^a.*ssword' | grep 'auth succeeded'
+  assert_success
 }
+
 @test "checking setup.sh: setup.sh email list" {
   run ./setup.sh -c mail email list
   assert_success
 }
+
 @test "checking setup.sh: setup.sh email update" {
   initialpass=$(cat ./config/postfix-accounts.cf | grep lorem@impsum.org | awk -F '|' '{print $2}')
   run ./setup.sh -c mail email update lorem@impsum.org consectetur
   updatepass=$(cat ./config/postfix-accounts.cf | grep lorem@impsum.org | awk -F '|' '{print $2}')
   [ "$initialpass" != "$changepass" ]
+
+  docker exec mail /bin/sh -c "updatemailuser pass@localhost.localdomain 'my other password'"
+  sleep 30
+  docker exec mail /bin/sh -c "doveadm auth test -x service=smtp pass@localhost.localdomain 'my other password' | grep 'auth succeeded'"
+  assert_success
 }
+
 @test "checking setup.sh: setup.sh email del" {
   run ./setup.sh -c mail email del -y lorem@impsum.org
   assert_success
@@ -1243,7 +1260,6 @@ load 'test_helper/bats-assert/load'
   run /bin/sh -c 'cat ./config/postfix-virtual.cf | grep "test1@example.org test1@forward.com,test2@forward.com" | wc -l | grep 1'
   assert_success
 }
-
 @test "checking setup.sh: setup.sh alias del" {
   echo -e 'test1@example.org test1@forward.com,test2@forward.com\ntest2@example.org test1@forward.com' > ./config/postfix-virtual.cf
 
@@ -1308,6 +1324,46 @@ load 'test_helper/bats-assert/load'
   run ./setup.sh -c mail_fail2ban debug fail2ban unban 192.0.66.5
   run ./setup.sh -c mail_fail2ban debug fail2ban unban
   assert_output --partial "You need to specify an IP address. Run"
+}
+
+@test "checking setup.sh: setup.sh relay add-domain" {
+  echo -n > ./config/postfix-relaymap.cf
+  ./setup.sh -c mail relay add-domain example1.org smtp.relay1.com 2525
+  ./setup.sh -c mail relay add-domain example2.org smtp.relay2.com
+  ./setup.sh -c mail relay add-domain example3.org smtp.relay3.com 2525
+  ./setup.sh -c mail relay add-domain example3.org smtp.relay.com 587
+
+  # check adding
+  run /bin/sh -c 'cat ./config/postfix-relaymap.cf | grep -e "^@example1.org\s\+\[smtp.relay1.com\]:2525" | wc -l | grep 1'
+  assert_success
+  # test default port
+  run /bin/sh -c 'cat ./config/postfix-relaymap.cf | grep -e "^@example2.org\s\+\[smtp.relay2.com\]:25" | wc -l | grep 1'
+  assert_success
+  # test modifying
+  run /bin/sh -c 'cat ./config/postfix-relaymap.cf | grep -e "^@example3.org\s\+\[smtp.relay.com\]:587" | wc -l | grep 1'
+  assert_success
+}
+
+@test "checking setup.sh: setup.sh relay add-auth" {
+  echo -n > ./config/postfix-sasl-password.cf
+  ./setup.sh -c mail relay add-auth example.org smtp_user smtp_pass
+  ./setup.sh -c mail relay add-auth example2.org smtp_user2 smtp_pass2
+  ./setup.sh -c mail relay add-auth example2.org smtp_user2 smtp_pass_new
+
+  # test adding
+  run /bin/sh -c 'cat ./config/postfix-sasl-password.cf | grep -e "^@example.org\s\+smtp_user:smtp_pass" | wc -l | grep 1'
+  assert_success
+  # test updating
+  run /bin/sh -c 'cat ./config/postfix-sasl-password.cf | grep -e "^@example2.org\s\+smtp_user2:smtp_pass_new" | wc -l | grep 1'
+  assert_success
+}
+
+@test "checking setup.sh: setup.sh relay exclude-domain" {
+  echo -n > ./config/postfix-relaymap.cf
+  ./setup.sh -c mail relay exclude-domain example.org
+
+  run /bin/sh -c 'cat ./config/postfix-relaymap.cf | grep -e "^@example.org\s*$" | wc -l | grep 1'
+  assert_success
 }
 
 #
@@ -1615,5 +1671,34 @@ load 'test_helper/bats-assert/load'
 
 @test "checking restart of process: saslauthd (saslauthd server enabled)" {
   run docker exec mail_with_ldap /bin/bash -c "pkill saslauthd && sleep 10 && ps aux --forest | grep -v grep | grep '/usr/sbin/saslauthd'"
+  assert_success
+}
+
+#
+# relay hosts
+#
+
+@test "checking relay hosts: default mapping is added from env vars" {
+  run docker exec mail_with_relays /bin/sh -c 'cat /etc/postfix/relayhost_map | grep -e "^@domainone.tld\s\+\[default.relay.com\]:2525" | wc -l | grep 1'
+  assert_success
+}
+
+@test "checking relay hosts: custom mapping is added from file" {
+  run docker exec mail_with_relays /bin/sh -c 'cat /etc/postfix/relayhost_map | grep -e "^@domaintwo.tld\s\+\[other.relay.com\]:587" | wc -l | grep 1'
+  assert_success
+}
+
+@test "checking relay hosts: ignored domain is not added" {
+  run docker exec mail_with_relays /bin/sh -c 'cat /etc/postfix/relayhost_map | grep -e "^@domainthree.tld\s\+\[any.relay.com\]:25" | wc -l | grep 0'
+  assert_success
+}
+
+@test "checking relay hosts: auth entry is added" {
+  run docker exec mail_with_relays /bin/sh -c 'cat /etc/postfix/sasl_passwd | grep -e "^@domaintwo.tld\s\+smtp_user_2:smtp_password_2" | wc -l | grep 1'
+  assert_success
+}
+
+@test "checking relay hosts: default auth entry is added" {
+  run docker exec mail_with_relays /bin/sh -c 'cat /etc/postfix/sasl_passwd | grep -e "^\[default.relay.com\]:2525\s\+smtp_user:smtp_password" | wc -l | grep 1'
   assert_success
 }
