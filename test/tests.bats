@@ -146,7 +146,7 @@ load 'test_helper/bats-assert/load'
   run docker exec mail_with_postgrey /bin/sh -c "sed -ie 's/permit_sasl_authenticated.*policyd-spf,$//g' /etc/postfix/main.cf"
   run docker exec mail_with_postgrey /bin/sh -c "sed -ie 's/reject_unauth_pipelining.*reject_unknown_recipient_domain,$//g' /etc/postfix/main.cf"
   run docker exec mail_with_postgrey /bin/sh -c "sed -ie 's/reject_rbl_client.*inet:127\.0\.0\.1:10023$//g' /etc/postfix/main.cf"
-  run docker exec mail_with_postgrey /bin/sh -c "sed -ie 's/smtpd_recipient_restrictions = /smtpd_recipient_restrictions = check_policy_service inet:127.0.0.1:10023/g' /etc/postfix/main.cf"
+  run docker exec mail_with_postgrey /bin/sh -c "sed -ie 's/smtpd_recipient_restrictions =/smtpd_recipient_restrictions = check_policy_service inet:127.0.0.1:10023/g' /etc/postfix/main.cf"
 
   run docker exec mail_with_postgrey /bin/sh -c "/etc/init.d/postfix reload"
   run docker exec mail_with_postgrey /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/postgrey.txt"
@@ -345,13 +345,13 @@ load 'test_helper/bats-assert/load'
 }
 
 @test "checking smtp: rejects spam" {
-  run docker exec mail /bin/sh -c "grep 'Blocked SPAM' /var/log/mail/mail.log | grep spam@external.tld | wc -l"
+  run docker exec mail /bin/sh -c "grep 'Blocked SPAM' /var/log/mail/mail.log | grep external.tld=spam@my-domain.com | wc -l"
   assert_success
   assert_output 1
 }
 
 @test "checking smtp: rejects virus" {
-  run docker exec mail /bin/sh -c "grep 'Blocked INFECTED' /var/log/mail/mail.log | grep virus@external.tld | wc -l"
+  run docker exec mail /bin/sh -c "grep 'Blocked INFECTED' /var/log/mail/mail.log | grep external.tld=virus@my-domain.com | wc -l"
   assert_success
   assert_output 1
 }
@@ -366,8 +366,6 @@ load 'test_helper/bats-assert/load'
   run docker exec mail_smtponly /bin/sh -c 'grep -cE "to=<user2\@external.tld>.*status\=sent" /var/log/mail/mail.log'
   [ "$status" -ge 0 ]
 }
-
-
 
 #
 # accounts
@@ -474,6 +472,8 @@ load 'test_helper/bats-assert/load'
   assert_success
   run docker exec mail /bin/sh -c "grep '\$sa_spam_subject_tag' /etc/amavis/conf.d/20-debian_defaults | grep '= .SPAM: .'"
   assert_success
+  run docker exec mail_undef_spam_subject /bin/sh -c "grep '\$sa_spam_subject_tag' /etc/amavis/conf.d/20-debian_defaults | grep '= undef'"
+  assert_success
 }
 
 @test "checking spamassassin: all registered domains should see spam headers" {
@@ -523,6 +523,76 @@ load 'test_helper/bats-assert/load'
   run docker exec mail /bin/sh -c "ls -l /etc/opendkim/keys/ | grep '^d' | wc -l"
   assert_success
   assert_output 2
+}
+
+
+# this set of tests is of low quality. It does not test the RSA-Key size properly via openssl or similar
+# Instead it tests the file-size (here 511) - which may differ with a different domain names
+# This test may be re-used as a global test to provide better test coverage.
+@test "checking opendkim: generator creates default keys size" {
+    # Prepare default key size 2048
+    rm -rf "$(pwd)/test/config/keyDefault" && mkdir -p "$(pwd)/test/config/keyDefault"
+    run docker run --rm \
+      -v "$(pwd)/test/config/keyDefault/":/tmp/docker-mailserver/ \
+      -v "$(pwd)/test/config/postfix-accounts.cf":/tmp/docker-mailserver/postfix-accounts.cf \
+      -v "$(pwd)/test/config/postfix-virtual.cf":/tmp/docker-mailserver/postfix-virtual.cf \
+      `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config | wc -l'
+    assert_success
+    assert_output 6
+
+  run docker run --rm \
+    -v "$(pwd)/test/config/keyDefault/opendkim":/etc/opendkim \
+    `docker inspect --format '{{ .Config.Image }}' mail` \
+    /bin/sh -c 'stat -c%s /etc/opendkim/keys/localhost.localdomain/mail.txt'
+
+  assert_success
+  assert_output 511
+}
+
+# this set of tests is of low quality. It does not test the RSA-Key size properly via openssl or similar
+# Instead it tests the file-size (here 511) - which may differ with a different domain names
+# This test may be re-used as a global test to provide better test coverage.
+@test "checking opendkim: generator creates key size 2048" {
+    # Prepare set key size 2048
+    rm -rf "$(pwd)/test/config/key2048" && mkdir -p "$(pwd)/test/config/key2048"
+    run docker run --rm \
+      -v "$(pwd)/test/config/key2048/":/tmp/docker-mailserver/ \
+      -v "$(pwd)/test/config/postfix-accounts.cf":/tmp/docker-mailserver/postfix-accounts.cf \
+      -v "$(pwd)/test/config/postfix-virtual.cf":/tmp/docker-mailserver/postfix-virtual.cf \
+      `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config 2048 | wc -l'
+    assert_success
+    assert_output 6
+
+  run docker run --rm \
+    -v "$(pwd)/test/config/key2048/opendkim":/etc/opendkim \
+    `docker inspect --format '{{ .Config.Image }}' mail` \
+    /bin/sh -c 'stat -c%s /etc/opendkim/keys/localhost.localdomain/mail.txt'
+
+  assert_success
+  assert_output 511
+}
+
+# this set of tests is of low quality. It does not test the RSA-Key size properly via openssl or similar
+# Instead it tests the file-size (here 329) - which may differ with a different domain names
+# This test may be re-used as a global test to provide better test coverage.
+@test "checking opendkim: generator creates key size 1024" {
+    # Prepare set key size 1024
+    rm -rf "$(pwd)/test/config/key1024" && mkdir -p "$(pwd)/test/config/key1024"
+    run docker run --rm \
+      -v "$(pwd)/test/config/key1024/":/tmp/docker-mailserver/ \
+      -v "$(pwd)/test/config/postfix-accounts.cf":/tmp/docker-mailserver/postfix-accounts.cf \
+      -v "$(pwd)/test/config/postfix-virtual.cf":/tmp/docker-mailserver/postfix-virtual.cf \
+      `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config 1024 | wc -l'
+    assert_success
+    assert_output 6
+
+  run docker run --rm \
+    -v "$(pwd)/test/config/key1024/opendkim":/etc/opendkim \
+    `docker inspect --format '{{ .Config.Image }}' mail` \
+    /bin/sh -c 'stat -c%s /etc/opendkim/keys/localhost.localdomain/mail.txt'
+
+  assert_success
+  assert_output 329
 }
 
 @test "checking opendkim: generator creates keys, tables and TrustedHosts" {
@@ -721,6 +791,26 @@ load 'test_helper/bats-assert/load'
 }
 
 #
+# postsrsd
+#
+
+@test "checking SRS: main.cf entries" {
+  run docker exec mail grep "sender_canonical_maps = tcp:localhost:10001" /etc/postfix/main.cf
+  assert_success
+  run docker exec mail grep "sender_canonical_classes = envelope_sender" /etc/postfix/main.cf
+  assert_success
+  run docker exec mail grep "recipient_canonical_maps = tcp:localhost:10002" /etc/postfix/main.cf
+  assert_success
+  run docker exec mail grep "recipient_canonical_classes = envelope_recipient,header_recipient" /etc/postfix/main.cf
+  assert_success
+}
+
+@test "checking SRS: postsrsd running" {
+  run docker exec mail /bin/sh -c "ps aux | grep ^postsrsd"
+  assert_success
+}
+
+#
 # fail2ban
 #
 
@@ -755,11 +845,19 @@ load 'test_helper/bats-assert/load'
   # Getting mail_fail2ban container IP
   MAIL_FAIL2BAN_IP=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' mail_fail2ban)
 
-  # Create a container which will send wrong authentications and should banned
+  # Create a container which will send wrong authentications and should get banned
   docker run --name fail-auth-mailer -e MAIL_FAIL2BAN_IP=$MAIL_FAIL2BAN_IP -v "$(pwd)/test":/tmp/docker-mailserver-test -d $(docker inspect --format '{{ .Config.Image }}' mail) tail -f /var/log/faillog
 
-  docker exec fail-auth-mailer /bin/sh -c "nc $MAIL_FAIL2BAN_IP 25 < /tmp/docker-mailserver-test/auth/smtp-auth-login-wrong.txt"
-  docker exec fail-auth-mailer /bin/sh -c "nc $MAIL_FAIL2BAN_IP 25 < /tmp/docker-mailserver-test/auth/smtp-auth-login-wrong.txt"
+  # can't pipe the file as usual due to postscreen. (respecting postscreen_greet_wait time and talking in turn):
+  for i in {1,2}; do
+    docker exec fail-auth-mailer /bin/bash -c \
+    'exec 3<>/dev/tcp/$MAIL_FAIL2BAN_IP/25 && \
+    while IFS= read -r cmd; do \
+      head -1 <&3; \
+      [[ "$cmd" == "EHLO"* ]] && sleep 6; \
+      echo $cmd >&3; \
+    done < "/tmp/docker-mailserver-test/auth/smtp-auth-login-wrong.txt"'
+  done
 
   sleep 5
 
@@ -787,6 +885,39 @@ load 'test_helper/bats-assert/load'
   # Checking that FAIL_AUTH_MAILER_IP is unbanned by iptables
   run docker exec mail_fail2ban /bin/sh -c "iptables -L f2b-postfix-sasl -n | grep REJECT | grep '$FAIL_AUTH_MAILER_IP'"
   assert_failure
+}
+
+#
+# postscreen
+#
+
+@test "checking postscreen" {
+  # Getting mail container IP
+  MAIL_POSTSCREEN_IP=$(docker inspect --format '{{ .NetworkSettings.IPAddress }}' mail_postscreen)
+
+  # talk too fast:
+
+  docker exec fail-auth-mailer /bin/sh -c "nc $MAIL_POSTSCREEN_IP 25 < /tmp/docker-mailserver-test/auth/smtp-auth-login.txt"
+  sleep 5
+
+  run docker exec mail_postscreen grep 'COMMAND PIPELINING' /var/log/mail/mail.log
+  assert_success
+
+  # positive test. (respecting postscreen_greet_wait time and talking in turn):
+  for i in {1,2}; do
+    docker exec fail-auth-mailer /bin/bash -c \
+    'exec 3<>/dev/tcp/'$MAIL_POSTSCREEN_IP'/25 && \
+    while IFS= read -r cmd; do \
+      head -1 <&3; \
+      [[ "$cmd" == "EHLO"* ]] && sleep 6; \
+      echo $cmd >&3; \
+    done < "/tmp/docker-mailserver-test/auth/smtp-auth-login.txt"'
+  done
+
+  sleep 5
+
+  run docker exec mail_postscreen grep 'PASS NEW ' /var/log/mail/mail.log
+  assert_success
 }
 
 #
@@ -945,7 +1076,7 @@ load 'test_helper/bats-assert/load'
 }
 
 @test "checking accounts: user3 should have been removed from /tmp/docker-mailserver/postfix-accounts.cf but not auser3" {
-  docker exec mail /bin/sh -c "delmailuser user3@domain.tld"
+  docker exec mail /bin/sh -c "delmailuser -y user3@domain.tld"
 
   run docker exec mail /bin/sh -c "grep '^user3@domain\.tld' -i /tmp/docker-mailserver/postfix-accounts.cf"
   assert_failure
@@ -971,11 +1102,10 @@ load 'test_helper/bats-assert/load'
     status="1"
   fi
 
-  docker exec mail /bin/sh -c "delmailuser auser3@domain.tld"
+  docker exec mail /bin/sh -c "delmailuser -y auser3@domain.tld"
 
   assert_success
 }
-
 
 @test "checking accounts: listmailuser" {
   run docker exec mail /bin/sh -c "listmailuser | head -n 1"
@@ -986,7 +1116,7 @@ load 'test_helper/bats-assert/load'
 @test "checking accounts: no error is generated when deleting a user if /tmp/docker-mailserver/postfix-accounts.cf is missing" {
   run docker run --rm \
     -v "$(pwd)/test/config/without-accounts/":/tmp/docker-mailserver/ \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'delmailuser user3@domain.tld'
+    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'delmailuser -y user3@domain.tld'
   assert_success
   [ -z "$output" ]
 }
@@ -1067,18 +1197,36 @@ load 'test_helper/bats-assert/load'
   initialpass=$(cat ./config/postfix-accounts.cf | grep lorem@impsum.org | awk -F '|' '{print $2}')
   run ./setup.sh -c mail email update lorem@impsum.org consectetur
   updatepass=$(cat ./config/postfix-accounts.cf | grep lorem@impsum.org | awk -F '|' '{print $2}')
-  if [ initialpass != changepass ]; then
-      status="0"
-    else
-      status="1"
-    fi
-  assert_success
+  [ "$initialpass" != "$changepass" ]
 }
 @test "checking setup.sh: setup.sh email del" {
-  run ./setup.sh -c mail email del lorem@impsum.org
+  run ./setup.sh -c mail email del -y lorem@impsum.org
   assert_success
-  run value=$(cat ./config/postfix-accounts.cf | grep lorem@impsum.org)
-  [ -z "$value" ]
+  run docker exec mail ls /var/mail/impsum.org/lorem
+  assert_failure
+  run grep lorem@impsum.org ./config/postfix-accounts.cf
+  assert_failure
+}
+
+@test "checking setup.sh: setup.sh email restrict" {
+  run ./setup.sh -c mail email restrict
+  assert_failure
+  run ./setup.sh -c mail email restrict add
+  assert_failure
+  ./setup.sh -c mail email restrict add send lorem@impsum.org
+  run ./setup.sh -c mail email restrict list send
+  assert_output --regexp "^lorem@impsum.org.*REJECT"
+
+  run ./setup.sh -c mail email restrict del send lorem@impsum.org
+  assert_success
+  run ./setup.sh -c mail email restrict list send
+  assert_output --partial "Everyone is allowed"
+
+  ./setup.sh -c mail email restrict add receive rec_lorem@impsum.org
+  run ./setup.sh -c mail email restrict list receive
+  assert_output --regexp "^rec_lorem@impsum.org.*REJECT"
+  run ./setup.sh -c mail email restrict del receive rec_lorem@impsum.org
+  assert_success
 }
 
 # alias
@@ -1092,15 +1240,30 @@ load 'test_helper/bats-assert/load'
   ./setup.sh -c mail alias add test1@example.org test1@forward.com
   ./setup.sh -c mail alias add test1@example.org test2@forward.com
 
-  run /bin/sh -c 'cat ./config/postfix-virtual.cf | grep "test1@example.org test1@forward.com, test2@forward.com," | wc -l | grep 1'
+  run /bin/sh -c 'cat ./config/postfix-virtual.cf | grep "test1@example.org test1@forward.com,test2@forward.com" | wc -l | grep 1'
   assert_success
 }
+
 @test "checking setup.sh: setup.sh alias del" {
-  echo 'test1@example.org test1@forward.com, test2@forward.com,' > ./config/postfix-virtual.cf
+  echo -e 'test1@example.org test1@forward.com,test2@forward.com\ntest2@example.org test1@forward.com' > ./config/postfix-virtual.cf
+
   ./setup.sh -c mail alias del test1@example.org test1@forward.com
+  run grep "test1@forward.com" ./config/postfix-virtual.cf
+  assert_output  --regexp "^test2@example.org +test1@forward.com$"
+
+  run grep "test2@forward.com" ./config/postfix-virtual.cf
+  assert_output  --regexp "^test1@example.org +test2@forward.com$"
+
   ./setup.sh -c mail alias del test1@example.org test2@forward.com
-  run cat ./config/postfix-virtual.cf | wc -l | grep 0
+  run grep "test1@example.org" ./config/postfix-virtual.cf
+  assert_failure
+
+  run grep "test2@example.org" ./config/postfix-virtual.cf
   assert_success
+
+  ./setup.sh -c mail alias del test2@example.org test1@forward.com
+  run grep "test2@example.org" ./config/postfix-virtual.cf
+  assert_failure
 }
 
 # config
@@ -1132,16 +1295,16 @@ load 'test_helper/bats-assert/load'
   assert_success
 }
 @test "checking setup.sh: setup.sh debug fail2ban" {
-  
+
   run docker exec mail_fail2ban /bin/sh -c "fail2ban-client set dovecot banip 192.0.66.4"
   run docker exec mail_fail2ban /bin/sh -c "fail2ban-client set dovecot banip 192.0.66.5"
   sleep 10
   run ./setup.sh -c mail_fail2ban debug fail2ban
-  assert_output "Banned in dovecot: 192.0.66.5 192.0.66.4"
+  assert_output --regexp "^Banned in dovecot: 192.0.66.5 192.0.66.4.*"
   run ./setup.sh -c mail_fail2ban debug fail2ban unban 192.0.66.4
   assert_output --partial "unbanned IP from dovecot: 192.0.66.4"
   run ./setup.sh -c mail_fail2ban debug fail2ban
-  assert_output "Banned in dovecot: 192.0.66.5"
+  assert_output --regexp "^Banned in dovecot: 192.0.66.5.*"
   run ./setup.sh -c mail_fail2ban debug fail2ban unban 192.0.66.5
   run ./setup.sh -c mail_fail2ban debug fail2ban unban
   assert_output --partial "You need to specify an IP address. Run"
@@ -1260,6 +1423,32 @@ load 'test_helper/bats-assert/load'
   assert_success
 }
 
+@test "checking dovecot: postmaster address" {
+  run docker exec mail /bin/sh -c "grep 'postmaster_address = postmaster@domain.com' /etc/dovecot/conf.d/15-lda.conf"
+  assert_success
+
+  run docker exec mail_with_ldap /bin/sh -c "grep 'postmaster_address = postmaster@localhost.localdomain' /etc/dovecot/conf.d/15-lda.conf"
+  assert_success
+}
+
+@test "checking spoofing: rejects sender forging" {
+  # checking rejection of spoofed sender
+  run docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/added-smtp-auth-spoofed.txt | grep 'Sender address rejected: not owned by user'"
+  assert_success
+  # checking ldap
+  run docker exec mail_with_ldap /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/ldap-smtp-auth-spoofed.txt | grep 'Sender address rejected: not owned by user'"
+  assert_success
+}
+
+@test "checking spoofing: accepts sending as alias" {
+
+  run docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/added-smtp-auth-spoofed-alias.txt | grep 'End data with'"
+  assert_success
+  # checking ldap alias
+  run docker exec mail_with_ldap /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/ldap-smtp-auth-spoofed-alias.txt | grep 'End data with'"
+  assert_success
+}
+
 # saslauthd
 @test "checking saslauthd: sasl ldap authentication works" {
   run docker exec mail_with_ldap bash -c "testsaslauthd -u some.user -p secret"
@@ -1310,6 +1499,22 @@ load 'test_helper/bats-assert/load'
   assert_success
   assert_output 1
 }
+
+#
+# Pflogsumm delivery check
+#
+
+@test "checking pflogsum delivery" {
+  # checking logrotation working and report being sent
+  docker exec mail logrotate --force /etc/logrotate.d/maillog
+  sleep 10
+  run docker exec mail grep "Subject: Postfix Summary for " /var/mail/localhost.localdomain/user1/new/ -R
+  assert_success
+  # checking default logrotation setup
+  run docker exec mail_with_ldap grep "daily" /etc/logrotate.d/maillog
+  assert_success
+}
+
 
 #
 # PCI compliance

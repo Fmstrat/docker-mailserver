@@ -11,6 +11,7 @@ INFO=$(docker ps \
 
 IMAGE_NAME=$(echo $INFO | awk '{print $1}')
 CONTAINER_NAME=$(echo $INFO | awk '{print $2}')
+CONFIG_PATH="$(pwd)/config"
 
 if [ -z "$IMAGE_NAME" ]; then
   IMAGE_NAME=tvial/docker-mailserver:latest
@@ -38,13 +39,16 @@ OPTIONS:
                     'tvial/docker-mailserver:latest'.
   -c CONTAINER_NAME The name of the running container.
 
+  -p PATH           config folder path (default: $(pwd)/config)
+
 SUBCOMMANDS:
 
   email:
 
-    $0 email add <email> <password>
-    $0 email update <email> <password>
+    $0 email add <email> [<password>]
+    $0 email update <email> [<password>]
     $0 email del <email>
+    $0 email restrict <add|del|list> <send|receive> [<email>]
     $0 email list
 
   alias:
@@ -54,13 +58,13 @@ SUBCOMMANDS:
 
   config:
 
-    $0 config dkim
+    $0 config dkim <keysize> (default: 2048)
     $0 config ssl
 
   debug:
 
     $0 debug fetchmail
-    $0 debug fail2ban <unban> <ip-address>               
+    $0 debug fail2ban [<unban> <ip-address>]
     $0 debug show-mail-logs
     $0 debug inspect
     $0 debug login <commands>
@@ -83,26 +87,41 @@ _docker_image() {
   fi
     docker run \
       --rm \
-      -v "$(pwd)/config":/tmp/docker-mailserver \
+      -v "$CONFIG_PATH":/tmp/docker-mailserver \
       -ti "$IMAGE_NAME" $@
 }
 
 _docker_container() {
   if [ -n "$CONTAINER_NAME" ]; then
-    docker exec -ti "$CONTAINER_NAME" $@
+    docker exec -ti "$CONTAINER_NAME" "$@"
   else
     echo "The docker-mailserver is not running!"
     exit 1
   fi
 }
 
-while getopts ":c:i:" OPT; do
+while getopts ":c:i:p:" OPT; do
   case $OPT in
     c)
       CONTAINER_NAME="$OPTARG"
       ;;
     i)
       IMAGE_NAME="$OPTARG"
+      ;;
+    p)
+      case "$OPTARG" in
+      /*)
+          CONFIG_PATH="$OPTARG"
+          ;;
+      *)
+          CONFIG_PATH="$(pwd)/$OPTARG"
+          ;;
+      esac
+      if [ ! -d "$CONFIG_PATH" ]; then
+        echo "Directory doesn't exist"
+        _usage
+        exit 1
+      fi
       ;;
    \?)
      echo "Invalid option: -$OPTARG" >&2
@@ -117,7 +136,6 @@ case $1 in
   email)
     shift
     case $1 in
-
       add)
         shift
         _docker_image addmailuser $@
@@ -129,6 +147,10 @@ case $1 in
       del)
         shift
         _docker_image delmailuser $@
+        ;;
+      restrict)
+        shift
+        _docker_container restrict-access $@
         ;;
       list)
         _docker_image listmailuser
@@ -164,7 +186,7 @@ case $1 in
     shift
     case $1 in
       dkim)
-        _docker_image generate-dkim-config
+        _docker_image generate-dkim-config $2
         ;;
       ssl)
         _docker_image generate-ssl-certificate
@@ -183,43 +205,7 @@ case $1 in
         ;;
       fail2ban)
         shift
-        JAILS=$(_docker_container fail2ban-client status | grep "Jail list" | cut -f2- | sed 's/,//g')
-        if [ -z "$1" ]; then
-          IP_COUNT=0
-	  for JAIL in $JAILS; do
-            BANNED_IP=$(_docker_container iptables -L f2b-$JAIL -n | grep -Eo '[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}' | grep -v '0.0.0.0')
-            if [ -n "$BANNED_IP" ]; then
-	      BANNED_IP=$(echo $BANNED_IP | sed -e 's/\n/,/g')
-	      echo "Banned in $JAIL: $BANNED_IP"
-	      IP_COUNT=$((IP_COUNT+1))
-            fi
-          done
-          if [ "$IP_COUNT" -eq 0 ]; then
-            echo "No IPs have been banned"
-          fi
-        else
-          case $1 in
-            unban)
-              shift
-              if [ -n "$1" ]; then
-                for JAIL in $JAILS; do
-                  RESULT=`_docker_container fail2ban-client set $JAIL unbanip $@`
-		  case "$RESULT" in
-		    *"is not banned"*) ;;
-		    *"NOK"*) ;;
-		    *)  echo -n "unbanned IP from $JAIL: " 
-			echo "$RESULT";;
-		  esac
-                done
-              else
-                echo "You need to specify an IP address. Run \"./setup.sh debug fail2ban\" to get a list of banned IP addresses."
-              fi
-              ;;
-            *)
-              _usage
-              ;;
-          esac
-        fi
+        _docker_container fail2ban $@
         ;;
       show-mail-logs)
         _docker_container cat /var/log/mail/mail.log
