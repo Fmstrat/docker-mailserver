@@ -96,7 +96,7 @@ run:
 		-e PERMIT_DOCKER=network \
 		-e DMS_DEBUG=0 \
 		-e OVERRIDE_HOSTNAME=mail.my-domain.com \
-		-h mail.my-domain.com \
+		-h unknown.domain.tld \
 		-t $(NAME)
 	sleep 15
 	docker run -d --name mail_fail2ban \
@@ -222,6 +222,8 @@ run:
 
 generate-accounts-after-run:
 	docker run --rm -e MAIL_USER=added@localhost.localdomain -e MAIL_PASS=mypassword -t $(NAME) /bin/sh -c 'echo "$$MAIL_USER|$$(doveadm pw -s SHA512-CRYPT -u $$MAIL_USER -p $$MAIL_PASS)"' >> test/config/postfix-accounts.cf
+	docker exec mail addmailuser pass@localhost.localdomain 'may be \a `p^a.*ssword'
+
 	sleep 10
 
 fixtures:
@@ -247,6 +249,7 @@ fixtures:
 	docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/sieve-pipe.txt"
 	docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/non-existing-user.txt"
 	docker exec mail_disabled_clamav_spamassassin /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-user1.txt"
+	docker exec mail /bin/sh -c "sendmail root < /tmp/docker-mailserver-test/email-templates/root-email.txt"
 	# postfix virtual transport lmtp
 	docker exec mail_lmtp_ip /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-user1.txt"
 	docker exec mail_privacy /bin/sh -c "openssl s_client -quiet -starttls smtp -connect 0.0.0.0:587 < /tmp/docker-mailserver-test/email-templates/send-privacy-email.txt"
@@ -278,7 +281,8 @@ clean:
 		mail_with_postgrey \
 		mail_undef_spam_subject \
 		mail_postscreen \
-		mail_override_hostname
+		mail_override_hostname \
+		mail_with_relays
 
 	@if [ -d config.bak ]; then\
 		rm -rf config ;\
@@ -289,3 +293,6 @@ clean:
 		mv testconfig.bak test/config ;\
 	fi
 	-sudo rm -rf test/onedir
+	-sudo rm -rf test/alias
+	-sudo rm -rf test/relay
+
