@@ -65,6 +65,9 @@ Download the docker-compose.yml, the .env and the setup.sh files:
 - Edit the `.env` to your liking. Adapt this file with your FQDN.
 - Install [docker-compose](https://docs.docker.com/compose/) in the version `1.6` or higher.
 
+#### Start Container
+    docker-compose up -d mail
+
 #### Create your mail accounts
 
     ./setup.sh email add <user@domain> [<password>]
@@ -75,8 +78,9 @@ Download the docker-compose.yml, the .env and the setup.sh files:
 
 Now the keys are generated, you can configure your DNS server by just pasting the content of `config/opendkim/keys/domain.tld/mail.txt` in your `domain.tld.hosts` zone.
 
-#### Start the container
+#### Restart the container
 
+    docker-compose down
     docker-compose up -d mail
 
 You're done!
@@ -186,6 +190,7 @@ services:
       - SASLAUTHD_LDAP_PASSWORD=admin
       - SASLAUTHD_LDAP_SEARCH_BASE=ou=people,dc=localhost,dc=localdomain
       - POSTMASTER_ADDRESS=postmaster@localhost.localdomain
+      - POSTFIX_MESSAGE_SIZE_LIMIT=100000000
     cap_add:
       - NET_ADMIN
       - SYS_PTRACE
@@ -298,6 +303,18 @@ Enabled by ENABLE_POSTFIX_VIRTUAL_TRANSPORT. Specify the final delivery of postf
 - `lmtps:inet:<host>:<port>` (secure lmtp with starttls, take a look at https://sys4.de/en/blog/2014/11/17/sicheres-lmtp-mit-starttls-in-dovecot/)
 - `lmtp:<kopano-host>:2003` (use kopano as mailstore)
 - etc.
+
+##### POSTFIX\_MAILBOX\_SIZE\_LIMIT
+
+Set the mailbox size limit for all users. If set to zero, the size will be unlimited (default).
+
+- **empty** => 0 (no limit)
+
+##### POSTFIX\_MESSAGE\_SIZE\_LIMIT
+
+Set the message size limit for all users. If set to zero, the size will be unlimited (not recommended!)
+
+- **empty** => 10240000 (~10 MB)
 
 ##### ENABLE_MANAGESIEVE
 
