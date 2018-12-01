@@ -15,9 +15,12 @@ DEFAULT_VARS["ENABLE_MANAGESIEVE"]="${ENABLE_MANAGESIEVE:="0"}"
 DEFAULT_VARS["ENABLE_FETCHMAIL"]="${ENABLE_FETCHMAIL:="0"}"
 DEFAULT_VARS["FETCHMAIL_POLL"]="${FETCHMAIL_POLL:="300"}"
 DEFAULT_VARS["ENABLE_LDAP"]="${ENABLE_LDAP:="0"}"
+DEFAULT_VARS["LDAP_START_TLS"]="${LDAP_START_TLS:="no"}"
+DEFAULT_VARS["DOVECOT_TLS"]="${DOVECOT_TLS:="no"}"
 DEFAULT_VARS["ENABLE_POSTGREY"]="${ENABLE_POSTGREY:="0"}"
 DEFAULT_VARS["POSTGREY_DELAY"]="${POSTGREY_DELAY:="300"}"
 DEFAULT_VARS["POSTGREY_MAX_AGE"]="${POSTGREY_MAX_AGE:="35"}"
+DEFAULT_VARS["POSTGREY_AUTO_WHITELIST_CLIENTS"]="${POSTGREY_AUTO_WHITELIST_CLIENTS:="5"}"
 DEFAULT_VARS["POSTGREY_TEXT"]="${POSTGREY_TEXT:="Delayed by postgrey"}"
 DEFAULT_VARS["POSTFIX_MESSAGE_SIZE_LIMIT"]="${POSTFIX_MESSAGE_SIZE_LIMIT:="10240000"}"  # ~10 MB by default
 DEFAULT_VARS["POSTFIX_MAILBOX_SIZE_LIMIT"]="${POSTFIX_MAILBOX_SIZE_LIMIT:="0"}"        # no limit by default
@@ -384,12 +387,13 @@ function _check_hostname() {
 		export DOMAINNAME=$(echo $HOSTNAME | sed s/[^.]*.//)
 	fi
 
+	notify 'inf' "Domain has been set to $DOMAINNAME"
+	notify 'inf' "Hostname has been set to $HOSTNAME"
+
 	if ( ! echo $HOSTNAME | grep -E '^(\S+[.]\S+)$' > /dev/null ); then
 		notify 'err' "Setting hostname/domainname is required"
-		kill -6 `cat /var/run/supervisord.pid` && return 1
+		kill `cat /var/run/supervisord.pid` && return 1
 	else
-		notify 'inf' "Domain has been set to $DOMAINNAME"
-		notify 'inf' "Hostname has been set to $HOSTNAME"
 		return 0
 	fi
 }
@@ -638,7 +642,7 @@ function _setup_ldap() {
 function _setup_postgrey() {
 	notify 'inf' "Configuring postgrey"
 	sed -i -e 's/, reject_rbl_client bl.spamcop.net$/, reject_rbl_client bl.spamcop.net, check_policy_service inet:127.0.0.1:10023/' /etc/postfix/main.cf
-	sed -i -e "s/\"--inet=127.0.0.1:10023\"/\"--inet=127.0.0.1:10023 --delay=$POSTGREY_DELAY --max-age=$POSTGREY_MAX_AGE\"/" /etc/default/postgrey
+	sed -i -e "s/\"--inet=127.0.0.1:10023\"/\"--inet=127.0.0.1:10023 --delay=$POSTGREY_DELAY --max-age=$POSTGREY_MAX_AGE --auto-whitelist-clients=$POSTGREY_AUTO_WHITELIST_CLIENTS\"/" /etc/default/postgrey
 	TEXT_FOUND=`grep -i "POSTGREY_TEXT" /etc/default/postgrey | wc -l`
 
 	if [ $TEXT_FOUND -eq 0 ]; then
@@ -646,6 +650,9 @@ function _setup_postgrey() {
 	fi
 	if [ -f /tmp/docker-mailserver/whitelist_clients.local ]; then
 		cp -f /tmp/docker-mailserver/whitelist_clients.local /etc/postgrey/whitelist_clients.local
+	fi
+	if [ -f /tmp/docker-mailserver/whitelist_recipients ]; then
+		cp -f /tmp/docker-mailserver/whitelist_recipients /etc/postgrey/whitelist_recipients
 	fi
 }
 
@@ -747,7 +754,7 @@ function _setup_postfix_aliases() {
 	echo -n > /etc/postfix/virtual
 	echo -n > /etc/postfix/regexp
 	if [ -f /tmp/docker-mailserver/postfix-virtual.cf ]; then
-    # fixing old virtual user file
+	# fixing old virtual user file
 	  [[ $(grep ",$" /tmp/docker-mailserver/postfix-virtual.cf) ]] && sed -i -e "s/, /,/g" -e "s/,$//g" /tmp/docker-mailserver/postfix-virtual.cf
 		# Copying virtual file
 		cp -f /tmp/docker-mailserver/postfix-virtual.cf /etc/postfix/virtual
@@ -774,6 +781,12 @@ function _setup_postfix_aliases() {
 
 	notify 'inf' "Configuring root alias"
 	echo "root: ${POSTMASTER_ADDRESS}" > /etc/aliases
+	if [ -f /tmp/docker-mailserver/postfix-aliases.cf ]; then
+		cat /tmp/docker-mailserver/postfix-aliases.cf>>/etc/aliases
+	else
+		notify 'inf' "'config/postfix-aliases.cf' is not provided and will be auto created."
+		echo -n >/tmp/docker-mailserver/postfix-aliases.cf
+	fi
 	postalias /etc/aliases
 }
 
@@ -801,8 +814,8 @@ function _setup_dkim() {
 	else
 		notify 'warn' "No DKIM key provided. Check the documentation to find how to get your keys."
 
-                local _f_keytable="/etc/opendkim/KeyTable"
-                [ ! -f "$_f_keytable" ] && touch "$_f_keytable"
+		local _f_keytable="/etc/opendkim/KeyTable"
+		[ ! -f "$_f_keytable" ] && touch "$_f_keytable"
 	fi
 }
 
