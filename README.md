@@ -66,7 +66,7 @@ Download the docker-compose.yml, the .env and the setup.sh files:
   - This file supports only simple `VAR=VAL` lines (see [Documentation](https://docs.docker.com/compose/env-file/)).
   - Don't quote your values.
   - Variable substitution is *not* supported (e.g. `OVERRIDE_HOSTNAME=$HOSTNAME.$DOMAINNAME`).
-- Install [docker-compose](https://docs.docker.com/compose/) in the version `1.6` or higher.
+- Install [docker-compose](https://docs.docker.com/compose/) in the version `1.7` or higher.
 
 #### Start Container
     docker-compose up -d mail
@@ -415,7 +415,7 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
   - 1 => LDAP authentification is enabled
   - NOTE:
     - A second container for the ldap service is necessary (e.g. [docker-openldap](https://github.com/osixia/docker-openldap))
-    - For preparing the ldap server to use in combination with this continer [this](http://acidx.net/wordpress/2014/06/installing-a-mailserver-with-postfix-dovecot-sasl-ldap-roundcube/) article may be helpful
+    - For preparing the ldap server to use in combination with this container [this](http://acidx.net/wordpress/2014/06/installing-a-mailserver-with-postfix-dovecot-sasl-ldap-roundcube/) article may be helpful
 
 ##### LDAP_START_TLS
 
@@ -445,22 +445,22 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
 
 ##### LDAP_QUERY_FILTER_USER
 
-  - e.g. `"(&(mail=%s)(mailEnabled=TRUE))"`
+  - e.g. `(&(mail=%s)(mailEnabled=TRUE))`
   - => Specify how ldap should be asked for users
 
 ##### LDAP_QUERY_FILTER_GROUP
 
-  - e.g. `"(&(mailGroupMember=%s)(mailEnabled=TRUE))"`
+  - e.g. `(&(mailGroupMember=%s)(mailEnabled=TRUE))`
   - => Specify how ldap should be asked for groups
 
 ##### LDAP_QUERY_FILTER_ALIAS
 
-  - e.g. `"(&(mailAlias=%s)(mailEnabled=TRUE))"`
+  - e.g. `(&(mailAlias=%s)(mailEnabled=TRUE))`
   - => Specify how ldap should be asked for aliases
-  
+
 ##### LDAP_QUERY_FILTER_DOMAIN
 
-- e.g. `"(&(|(mail=*@%s)(mailalias=*@%s)(mailGroupMember=*@%s))(mailEnabled=TRUE))"`
+- e.g. `(&(|(mail=*@%s)(mailalias=*@%s)(mailGroupMember=*@%s))(mailEnabled=TRUE))`
 - => Specify how ldap should be asked for domains
 
 ##### DOVECOT_TLS
@@ -470,13 +470,31 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
 
 ## Dovecot
 
+The following variables overwrite the default values for ```/etc/dovecot/dovecot-ldap.conf.ext```.
+
 ##### DOVECOT_USER_FILTER
 
-  - e.g. `"(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))"`
+  - e.g. `(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))`
+
+##### DOVECOT_USER_ATTR
+
+ - e.g. `homeDirectory=home,qmailUID=uid,qmailGID=gid,mailMessageStore=mail`
+ - => Specify the directory to dovecot attribute mapping that fits your directory structure.
+ - Note: This is necessary for directories that do not use the [Postfix Book Schema](test/docker-openldap/bootstrap/schema/mmc/postfix-book.schema).
+ - Note: The left-hand value is the directory attribute, the right hand value is the dovecot variable.
+ - More details on the [Dovecot Wiki](https://wiki.dovecot.org/AuthDatabase/LDAP/Userdb)
 
 ##### DOVECOT_PASS_FILTER
 
-  - e.g. `"(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))"`
+  - e.g. `(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))`
+
+##### DOVECOT_PASS_ATTR
+
+- e.g. `uid=user,userPassword=password`
+- => Specify the directory to dovecot variable mapping that fits your directory structure.
+- Note: This is necessary for directories that do not use the [Postfix Book Schema](test/docker-openldap/bootstrap/schema/mmc/postfix-book.schema).
+- Note: The left-hand value is the directory attribute, the right hand value is the dovecot variable.
+- More details on the [Dovecot Wiki](https://wiki.dovecot.org/AuthDatabase/LDAP/PasswordLookups)
 
 ## Postgrey
 
@@ -571,7 +589,7 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 ##### SRS_EXCLUDE_DOMAINS
 
   - **empty** => Envelope sender will be rewritten for all domains
-  - provide comma seperated list of domains to exclude from rewriting
+  - provide comma separated list of domains to exclude from rewriting
 
 ##### SRS_SECRET
 
@@ -585,6 +603,13 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 
   - **empty** => Derived from OVERRIDE_HOSTNAME, DOMAINNAME, or the container's hostname
   - Set this if auto-detection fails, isn't what you want, or you wish to have a separate container handle DSNs
+
+## Default Relay Host
+
+#### DEFAULT_RELAY_HOST
+
+  - **empty** => don't set default relayhost setting in main.cf
+  - default host and port to relay all mail through
 
 ## Multi-domain Relay Hosts
 
