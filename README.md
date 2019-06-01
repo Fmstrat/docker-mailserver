@@ -123,24 +123,24 @@ services:
     domainname: domain.com
     container_name: mail
     ports:
-    - "25:25"
-    - "143:143"
-    - "587:587"
-    - "993:993"
+      - "25:25"
+      - "143:143"
+      - "587:587"
+      - "993:993"
     volumes:
-    - maildata:/var/mail
-    - mailstate:/var/mail-state
-    - ./config/:/tmp/docker-mailserver/
+      - maildata:/var/mail
+      - mailstate:/var/mail-state
+      - ./config/:/tmp/docker-mailserver/
     environment:
-    - ENABLE_SPAMASSASSIN=1
-    - ENABLE_CLAMAV=1
-    - ENABLE_FAIL2BAN=1
-    - ENABLE_POSTGREY=1
-    - ONE_DIR=1
-    - DMS_DEBUG=0
+      - ENABLE_SPAMASSASSIN=1
+      - ENABLE_CLAMAV=1
+      - ENABLE_FAIL2BAN=1
+      - ENABLE_POSTGREY=1
+      - ONE_DIR=1
+      - DMS_DEBUG=0
     cap_add:
-    - NET_ADMIN
-    - SYS_PTRACE
+      - NET_ADMIN
+      - SYS_PTRACE
 
 volumes:
   maildata:
@@ -560,7 +560,7 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 ##### SASLAUTHD_LDAP_BIND_DN
 
   - empty => anonymous bind
-  - specify an object with priviliges to search the directory tree
+  - specify an object with privileges to search the directory tree
   - e.g. active directory: SASLAUTHD_LDAP_BIND_DN=cn=Administrator,cn=Users,dc=mydomain,dc=net
   - e.g. openldap: SASLAUTHD_LDAP_BIND_DN=cn=admin,dc=mydomain,dc=net
 
