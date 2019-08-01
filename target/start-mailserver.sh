@@ -95,6 +95,7 @@ function register_functions() {
 
 	if [ "$SMTP_ONLY" != 1 ]; then
 		_register_setup_function "_setup_dovecot"
+                _register_setup_function "_setup_dovecot_dhparam"
 		_register_setup_function "_setup_dovecot_local_user"
 	fi
 
@@ -1038,7 +1039,7 @@ function _setup_postfix_override_configuration() {
 	fi
 	if [ -f /tmp/docker-mailserver/postfix-master.cf ]; then
 		while read line; do
-		if [[ "$line" =~ ^[a-z] ]]; then
+		if [[ "$line" =~ ^[0-9a-z] ]]; then
 			postconf -P "$line"
 		fi
 		done < /tmp/docker-mailserver/postfix-master.cf
@@ -1189,11 +1190,30 @@ function _setup_postfix_dhparam() {
 			notify 'inf' "Use dhparams that was generated previously"
 		fi
 
-		# Copy from the state directpry to the working location
+		# Copy from the state directory to the working location
 		rm /etc/postfix/dhparams.pem && cp $DHPARAMS_FILE /etc/postfix/dhparams.pem
 	else
 		notify 'inf' "No state dir, we use the dhparams generated on image creation"
 	fi
+}
+
+function _setup_dovecot_dhparam() {
+        notify 'task' 'Setting up Dovecot dhparam'
+        if [ "$ONE_DIR" = 1 ];then
+                DHPARAMS_FILE=/var/mail-state/lib-dovecot/dh.pem
+                if [ ! -f $DHPARAMS_FILE ]; then
+                        notify 'inf' "Generate new dhparams for dovecot"
+                        mkdir -p $(dirname "$DHPARAMS_FILE")
+                        openssl dhparam -out $DHPARAMS_FILE 2048
+                else
+                        notify 'inf' "Use dovecot dhparams that was generated previously"
+                fi
+
+                # Copy from the state directory to the working location
+                rm /etc/dovecot/dh.pem && cp $DHPARAMS_FILE /etc/dovecot/dh.pem
+        else
+                notify 'inf' "No state dir, we use the dovecot dhparams generated on image creation"
+        fi
 }
 
 function _setup_security_stack() {
@@ -1364,7 +1384,7 @@ function _fix_var_amavis_permissions() {
 function _fix_cleanup_clamav() {
     notify 'task' 'Cleaning up disabled Clamav'
     rm -f /etc/logrotate.d/clamav-*
-    rm -f /etc/cron.d/freshclam
+    rm -f /etc/cron.d/clamav-freshclam
 }
 
 ##########################################################################
