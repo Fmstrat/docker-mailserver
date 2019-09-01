@@ -285,7 +285,8 @@ Enables the Sender Rewriting Scheme. SRS is needed if your mail server acts as f
 Set different options for mynetworks option (can be overwrite in postfix-main.cf)
   - **empty** => localhost only
   - host => Add docker host (ipv4 only)
-  - network => Add all docker containers (ipv4 only)
+  - network => Add the docker default bridge network (172.16.0.0/12); **WARNING**: `docker-compose` might use others (e.g. 192.168.0.0/16) use `PERMIT_DOCKER=connected-networks` in this case
+  - connected-networks => Add all connected docker networks (ipv4 only)
 
 ##### VIRUSMAILS_DELETE_DELAY
 
@@ -391,7 +392,7 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
 
   - **6.31** => triggers spam evasive actions
 
-Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
+Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`. By default, the mailserver is configured to quarantine spam emails. If emails are quarantined, they are compressed and stored in a location dependent on the ONE_DIR setting above. If `ONE_DIR=1` the location is /var/mail-state/lib-amavis/virusmails/. If `ONE_DIR=0` it is /var/lib/amavis/virusmails/. These paths are inside the docker container. To inhibit this behaviour and deliver spam emails, set this to a very high value e.g. 100.0.
 
 ##### SA_SPAM_SUBJECT
 
@@ -477,7 +478,7 @@ The following variables overwrite the default values for ```/etc/dovecot/dovecot
 
   - e.g. `(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))`
 
-##### DOVECOT_USER_ATTR
+##### DOVECOT_USER_ATTRS
 
  - e.g. `homeDirectory=home,qmailUID=uid,qmailGID=gid,mailMessageStore=mail`
  - => Specify the directory to dovecot attribute mapping that fits your directory structure.
@@ -489,7 +490,7 @@ The following variables overwrite the default values for ```/etc/dovecot/dovecot
 
   - e.g. `(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))`
 
-##### DOVECOT_PASS_ATTR
+##### DOVECOT_PASS_ATTRS
 
 - e.g. `uid=user,userPassword=password`
 - => Specify the directory to dovecot variable mapping that fits your directory structure.

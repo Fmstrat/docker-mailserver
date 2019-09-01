@@ -49,6 +49,7 @@ DEFAULT_VARS["VIRUSMAILS_DELETE_DELAY"]="${VIRUSMAILS_DELETE_DELAY:="7"}"
 ##########################################################################
 HOSTNAME="$(hostname -f)"
 DOMAINNAME="$(hostname -d)"
+CHKSUM_FILE=/tmp/docker-mailserver-config-chksum
 ##########################################################################
 # << GLOBAL VARS
 ##########################################################################
@@ -121,6 +122,7 @@ function register_functions() {
 	_register_setup_function "_setup_postfix_hostname"
 	_register_setup_function "_setup_dovecot_hostname"
 
+	_register_setup_function "_setup_postfix_smtputf8"
 	_register_setup_function "_setup_postfix_sasl"
 	_register_setup_function "_setup_postfix_override_configuration"
 	_register_setup_function "_setup_postfix_sasl_password"
@@ -165,6 +167,9 @@ function register_functions() {
   	_register_setup_function "_setup_mail_summary"
   fi
 
+        # Compute last as the config files are modified in-place
+        _register_setup_function "_setup_chksum_file"
+
 	################### << setup funcs
 
 	################### >> fix funcs
@@ -172,7 +177,10 @@ function register_functions() {
 	_register_fix_function "_fix_var_mail_permissions"
 	_register_fix_function "_fix_var_amavis_permissions"
 	if [ "$ENABLE_CLAMAV" = 0 ]; then
-        _register_fix_function "_fix_cleanup_clamav"
+        	_register_fix_function "_fix_cleanup_clamav"
+	fi
+	if [ "$ENABLE_SPAMASSASSIN" = 0 ]; then
+		_register_fix_function "_fix_cleanup_spamassassin"
 	fi
 
 	################### << fix funcs
@@ -439,6 +447,30 @@ function _setup_default_vars() {
 	done
 }
 
+function _setup_chksum_file() {
+        notify 'task' "Setting up configuration checksum file"
+
+
+        if [ -d /tmp/docker-mailserver ]; then
+          pushd /tmp/docker-mailserver
+
+          declare -a cf_files=()
+          for file in postfix-accounts.cf postfix-virtual.cf postfix-aliases.cf; do
+            [ -f "$file" ] && cf_files+=("$file")
+          done
+
+          notify 'inf' "Creating $CHKSUM_FILE"
+          sha512sum ${cf_files[@]/#/--tag } >$CHKSUM_FILE
+
+          popd
+        else
+          # We could just skip the file, but perhaps config can be added later?
+          # If so it must be processed by the check for changes script
+          notify 'inf' "Creating empty $CHKSUM_FILE (no config)"
+          touch $CHKSUM_FILE
+        fi
+}
+
 function _setup_mailname() {
 	notify 'task' 'Setting up Mailname'
 
@@ -478,6 +510,25 @@ function _setup_dovecot_hostname() {
 
 function _setup_dovecot() {
 	notify 'task' 'Setting up Dovecot'
+
+        # Moved from docker file, copy or generate default self-signed cert
+        if [ -f /var/mail-state/lib-dovecot/dovecot.pem -a "$ONE_DIR" = 1 ]; then
+                notify 'inf' "Copying default dovecot cert"
+                cp /var/mail-state/lib-dovecot/dovecot.key /etc/dovecot/ssl/
+                cp /var/mail-state/lib-dovecot/dovecot.pem /etc/dovecot/ssl/
+        fi
+        if [ ! -f /etc/dovecot/ssl/dovecot.pem ]; then
+                notify 'inf' "Generating default dovecot cert"
+                pushd /usr/share/dovecot
+                ./mkcert.sh
+                popd
+
+                if [ "$ONE_DIR" = 1 ];then
+                        mkdir -p /var/mail-state/lib-dovecot
+                        cp /etc/dovecot/ssl/dovecot.key /var/mail-state/lib-dovecot/
+                        cp /etc/dovecot/ssl/dovecot.pem /var/mail-state/lib-dovecot/
+                fi
+        fi
 
 	cp -a /usr/share/dovecot/protocols.d /etc/dovecot/
 	# Disable pop3 (it will be eventually enabled later in the script, if requested)
@@ -675,6 +726,11 @@ function _setup_postfix_sizelimits() {
 	postconf -e "mailbox_size_limit = ${DEFAULT_VARS["POSTFIX_MAILBOX_SIZE_LIMIT"]}"
 }
 
+function _setup_postfix_smtputf8() {
+        notify 'inf' "Configuring postfix smtputf8 support (disable)"
+        postconf -e "smtputf8_enable = no"
+}
+
 function _setup_spoof_protection () {
 	notify 'inf' "Configuring Spoof Protection"
 	sed -i 's|smtpd_sender_restrictions =|smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch,|' /etc/postfix/main.cf
@@ -821,6 +877,12 @@ function _setup_dkim() {
 
 		local _f_keytable="/etc/opendkim/KeyTable"
 		[ ! -f "$_f_keytable" ] && touch "$_f_keytable"
+	fi
+
+	# Setup nameservers paramater from /etc/resolv.conf if not defined
+	if ! grep '^Nameservers' /etc/opendkim.conf; then
+		echo "Nameservers $(grep '^nameserver' /etc/resolv.conf | awk -F " " '{print $2}' | paste -sd ',' -)" >> /etc/opendkim.conf
+		notify 'inf' "Nameservers added to /etc/opendkim.conf"
 	fi
 }
 
@@ -969,7 +1031,6 @@ function _setup_ssl() {
         ;;
     * )
         # Unknown option, default behavior, no action is required
-
         notify 'warn' "SSL configured by default"
         ;;
 	esac
@@ -988,6 +1049,7 @@ function _setup_docker_permit() {
 
 	container_ip=$(ip addr show eth0 | grep 'inet ' | sed 's/[^0-9\.\/]*//g' | cut -d '/' -f 1)
 	container_network="$(echo $container_ip | cut -d '.' -f1-2).0.0"
+	container_networks=$(ip -o -4 addr show type veth | egrep -o '[0-9\.]+/[0-9]+')
 
 	case $PERMIT_DOCKER in
 		"host" )
@@ -1003,7 +1065,15 @@ function _setup_docker_permit() {
 			echo 172.16.0.0/12 >> /etc/opendmarc/ignore.hosts
 			echo 172.16.0.0/12 >> /etc/opendkim/TrustedHosts
 			;;
-
+		"connected-networks" )
+			for network in $container_networks; do
+				network=$(_sanitize_ipv4_to_subnet_cidr $network)
+				notify 'inf' "Adding docker network $network in my networks"
+				postconf -e "$(postconf | grep '^mynetworks =') $network"
+				echo $network >> /etc/opendmarc/ignore.hosts
+				echo $network >> /etc/opendkim/TrustedHosts
+			done
+			;;
 		* )
 			notify 'inf' "Adding container ip in my networks"
 			postconf -e "$(postconf | grep '^mynetworks =') $container_ip/32"
@@ -1181,28 +1251,41 @@ function _setup_postfix_relay_hosts() {
 function _setup_postfix_dhparam() {
 	notify 'task' 'Setting up Postfix dhparam'
 	if [ "$ONE_DIR" = 1 ];then
-		DHPARAMS_FILE=/var/mail-state/lib-postfix/dhparams.pem
+		DHPARAMS_FILE=/var/mail-state/lib-shared/dhparams.pem
 		if [ ! -f $DHPARAMS_FILE ]; then
-			notify 'inf' "Generate new dhparams for postfix"
+			notify 'inf' "Generate new shared dhparams (postfix)"
 			mkdir -p $(dirname "$DHPARAMS_FILE")
 			openssl dhparam -out $DHPARAMS_FILE 2048
 		else
-			notify 'inf' "Use dhparams that was generated previously"
+			notify 'inf' "Use postfix dhparams that was generated previously"
 		fi
 
 		# Copy from the state directory to the working location
-		rm /etc/postfix/dhparams.pem && cp $DHPARAMS_FILE /etc/postfix/dhparams.pem
+		rm -f /etc/postfix/dhparams.pem && cp $DHPARAMS_FILE /etc/postfix/dhparams.pem
 	else
-		notify 'inf' "No state dir, we use the dhparams generated on image creation"
+                if [ ! -f /etc/postfix/dhparams.pem ]; then
+                        if [ -f /etc/dovecot/dh.pem ]; then
+                                notify 'inf' "Copy dovecot dhparams to postfix"
+                                cp /etc/dovecot/dh.pem /etc/postfix/dhparams.pem
+                        elif [ -f /tmp/docker-mailserver/dhparams.pem ]; then
+                                notify 'inf' "Copy pre-generated dhparams to postfix"
+                                cp /tmp/docker-mailserver/dhparams.pem /etc/postfix/dhparams.pem
+                        else
+                                notify 'inf' "Generate new dhparams for postfix"
+                                openssl dhparam -out /etc/postfix/dhparams.pem 2048
+                        fi
+                else
+                        notify 'inf' "Use existing postfix dhparams"
+                fi
 	fi
 }
 
 function _setup_dovecot_dhparam() {
         notify 'task' 'Setting up Dovecot dhparam'
         if [ "$ONE_DIR" = 1 ];then
-                DHPARAMS_FILE=/var/mail-state/lib-dovecot/dh.pem
+                DHPARAMS_FILE=/var/mail-state/lib-shared/dhparams.pem
                 if [ ! -f $DHPARAMS_FILE ]; then
-                        notify 'inf' "Generate new dhparams for dovecot"
+                        notify 'inf' "Generate new shared dhparams (dovecot)"
                         mkdir -p $(dirname "$DHPARAMS_FILE")
                         openssl dhparam -out $DHPARAMS_FILE 2048
                 else
@@ -1210,9 +1293,22 @@ function _setup_dovecot_dhparam() {
                 fi
 
                 # Copy from the state directory to the working location
-                rm /etc/dovecot/dh.pem && cp $DHPARAMS_FILE /etc/dovecot/dh.pem
+                rm -f /etc/dovecot/dh.pem && cp $DHPARAMS_FILE /etc/dovecot/dh.pem
         else
-                notify 'inf' "No state dir, we use the dovecot dhparams generated on image creation"
+                if [ ! -f /etc/dovecot/dh.pem ]; then
+                        if [ -f /etc/postfix/dhparams.pem ]; then
+                                notify 'inf' "Copy postfix dhparams to dovecot"
+                                cp /etc/postfix/dhparams.pem /etc/dovecot/dh.pem
+                        elif [ -f /tmp/docker-mailserver/dhparams.pem ]; then
+                                notify 'inf' "Copy pre-generated dhparams to dovecot"
+                                cp /tmp/docker-mailserver/dhparams.pem /etc/dovecot/dh.pem
+                        else
+                                notify 'inf' "Generate new dhparams for dovecot"
+                                openssl dhparam -out /etc/dovecot/dh.pem 2048
+                        fi
+                else
+                        notify 'inf' "Use existing dovecot dhparams"
+                fi
         fi
 }
 
@@ -1385,6 +1481,11 @@ function _fix_cleanup_clamav() {
     notify 'task' 'Cleaning up disabled Clamav'
     rm -f /etc/logrotate.d/clamav-*
     rm -f /etc/cron.d/clamav-freshclam
+}
+
+function _fix_cleanup_spamassassin() {
+    notify 'task' 'Cleaning up disabled spamassassin'
+    rm -f /etc/cron.daily/spamassassin
 }
 
 ##########################################################################
@@ -1568,6 +1669,8 @@ function _start_changedetector() {
 # !  CARE --> DON'T CHANGE, unless you exactly know what you are doing
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # >>
+
+. /usr/local/bin/helper_functions.sh
 
 if [[ ${DEFAULT_VARS["DMS_DEBUG"]} == 1 ]]; then
 notify 'taskgrp' ""
