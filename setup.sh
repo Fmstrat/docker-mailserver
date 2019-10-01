@@ -7,11 +7,12 @@
 INFO=$(docker ps \
   --no-trunc \
   --format="{{.Image}}\t{{.Names}}\t{{.Command}}" | \
-  grep "/bin/sh -c 'supervisord -c /etc/supervisor/supervisord.conf'")
+  grep "supervisord -c /etc/supervisor/supervisord.conf")
 
 IMAGE_NAME=$(echo $INFO | awk '{print $1}')
 CONTAINER_NAME=$(echo $INFO | awk '{print $2}')
 DEFAULT_CONFIG_PATH="$(pwd)/config"
+USE_CONTAINER=false
 
 _update_config_path() {
   VOLUME=$(docker inspect $CONTAINER_NAME \
@@ -70,7 +71,7 @@ SUBCOMMANDS:
   config:
 
     $0 config dkim <keysize> (default: 2048)
-    $0 config ssl
+    $0 config ssl <fqdn>
 
   relay:
 
@@ -98,14 +99,21 @@ _docker_image_exists() {
 }
 
 _docker_image() {
-  if ! _docker_image_exists "$IMAGE_NAME"; then
-    echo "Image '$IMAGE_NAME' not found. Pulling ..."
-    docker pull "$IMAGE_NAME"
-  fi
+  if [ "$USE_CONTAINER" = true ]; then
+    # Reuse existing container specified on command line
+    docker exec -ti "$CONTAINER_NAME" "$@"
+  else
+    # Start temporary container with specified image
+    if ! _docker_image_exists "$IMAGE_NAME"; then
+      echo "Image '$IMAGE_NAME' not found. Pulling ..."
+      docker pull "$IMAGE_NAME"
+    fi
+
     docker run \
       --rm \
       -v "$CONFIG_PATH":/tmp/docker-mailserver \
       -ti "$IMAGE_NAME" $@
+  fi
 }
 
 _docker_container() {
@@ -121,6 +129,7 @@ while getopts ":c:i:p:" OPT; do
   case $OPT in
     c)
       CONTAINER_NAME="$OPTARG"
+      USE_CONTAINER=true # Container specified, connect to running instance
       ;;
     i)
       IMAGE_NAME="$OPTARG"
@@ -217,7 +226,7 @@ case $1 in
         _docker_image generate-dkim-config $2
         ;;
       ssl)
-        _docker_image generate-ssl-certificate
+        _docker_image generate-ssl-certificate "$2"
         ;;
       *)
         _usage

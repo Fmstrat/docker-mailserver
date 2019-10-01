@@ -9,24 +9,25 @@ Easy to deploy and upgrade.
 
 Includes:
 
-- postfix with smtp or ldap auth
-- dovecot for sasl, imap (and optional pop3) with ssl support, with ldap auth
+- [Postfix](http://www.postfix.org) with smtp or ldap auth
+- [Dovecot](https://www.dovecot.org) for sasl, imap (and optional pop3) with ssl support, with ldap auth
+  - Dovecot is installed from the [Dovecot Community Repo](https://wiki2.dovecot.org/PrebuiltBinaries)
 - saslauthd with ldap auth
-- [amavis](https://www.amavis.org/)
-- [spamassasin](http://spamassassin.apache.org/) supporting custom rules
-- [clamav](https://www.clamav.net/) with automatic updates
-- opendkim
-- opendmarc
-- [fail2ban](https://www.fail2ban.org/wiki/index.php/Main_Page)
-- [fetchmail](http://www.fetchmail.info/fetchmail-man.html)
-- [postscreen](http://www.postfix.org/POSTSCREEN_README.html)
-- [postgrey](https://postgrey.schweikert.ch/)
-- basic [sieve support](https://github.com/tomav/docker-mailserver/wiki/Configure-Sieve-filters) using dovecot
+- [Amavis](https://www.amavis.org/)
+- [Spamassasin](http://spamassassin.apache.org/) supporting custom rules
+- [ClamAV](https://www.clamav.net/) with automatic updates
+- [OpenDKIM](http://www.opendkim.org)
+- [OpenDMARC](https://github.com/trusteddomainproject/OpenDMARC)
+- [Fail2ban](https://www.fail2ban.org/wiki/index.php/Main_Page)
+- [Fetchmail](http://www.fetchmail.info/fetchmail-man.html)
+- [Postscreen](http://www.postfix.org/POSTSCREEN_README.html)
+- [Postgrey](https://postgrey.schweikert.ch/)
+- basic [Sieve support](https://github.com/tomav/docker-mailserver/wiki/Configure-Sieve-filters) using dovecot
 - [LetsEncrypt](https://letsencrypt.org/) and self-signed certificates
-- [setup script](https://github.com/tomav/docker-mailserver/wiki/Setup-docker-mailserver-using-the-script-setup.sh) to easily configure and maintain your mailserver
+- [Setup script](https://github.com/tomav/docker-mailserver/wiki/Setup-docker-mailserver-using-the-script-setup.sh) to easily configure and maintain your mailserver
 - persistent data and state (but think about backups!)
-- [integration tests](https://travis-ci.org/tomav/docker-mailserver)
-- [automated builds on docker hub](https://hub.docker.com/r/tvial/docker-mailserver/)
+- [Integration tests](https://travis-ci.org/tomav/docker-mailserver)
+- [Automated builds on docker hub](https://hub.docker.com/r/tvial/docker-mailserver/)
 
 Why I created this image: [Simple mail server with Docker](http://tvi.al/simple-mail-server-with-docker/)
 
@@ -63,7 +64,13 @@ Download the docker-compose.yml, the .env and the setup.sh files:
 #### Create a docker-compose environment
 
 - Edit the `.env` to your liking. Adapt this file with your FQDN.
-- Install [docker-compose](https://docs.docker.com/compose/) in the version `1.6` or higher.
+  - This file supports only simple `VAR=VAL` lines (see [Documentation](https://docs.docker.com/compose/env-file/)).
+  - Don't quote your values.
+  - Variable substitution is *not* supported (e.g. `OVERRIDE_HOSTNAME=$HOSTNAME.$DOMAINNAME`).
+- Install [docker-compose](https://docs.docker.com/compose/) in the version `1.7` or higher.
+
+#### Start Container
+    docker-compose up -d mail
 
 #### Create your mail accounts
 
@@ -75,8 +82,10 @@ Download the docker-compose.yml, the .env and the setup.sh files:
 
 Now the keys are generated, you can configure your DNS server by just pasting the content of `config/opendkim/keys/domain.tld/mail.txt` in your `domain.tld.hosts` zone.
 
-#### Start the container
+#### Restart and update the container
 
+    docker-compose down
+    docker pull tvial/docker-mailserver:latest
     docker-compose up -d mail
 
 You're done!
@@ -116,24 +125,24 @@ services:
     domainname: domain.com
     container_name: mail
     ports:
-    - "25:25"
-    - "143:143"
-    - "587:587"
-    - "993:993"
+      - "25:25"
+      - "143:143"
+      - "587:587"
+      - "993:993"
     volumes:
-    - maildata:/var/mail
-    - mailstate:/var/mail-state
-    - ./config/:/tmp/docker-mailserver/
+      - maildata:/var/mail
+      - mailstate:/var/mail-state
+      - ./config/:/tmp/docker-mailserver/
     environment:
-    - ENABLE_SPAMASSASSIN=1
-    - ENABLE_CLAMAV=1
-    - ENABLE_FAIL2BAN=1
-    - ENABLE_POSTGREY=1
-    - ONE_DIR=1
-    - DMS_DEBUG=0
+      - ENABLE_SPAMASSASSIN=1
+      - ENABLE_CLAMAV=1
+      - ENABLE_FAIL2BAN=1
+      - ENABLE_POSTGREY=1
+      - ONE_DIR=1
+      - DMS_DEBUG=0
     cap_add:
-    - NET_ADMIN
-    - SYS_PTRACE
+      - NET_ADMIN
+      - SYS_PTRACE
 
 volumes:
   maildata:
@@ -174,11 +183,12 @@ services:
       - LDAP_SEARCH_BASE=ou=people,dc=localhost,dc=localdomain
       - LDAP_BIND_DN=cn=admin,dc=localhost,dc=localdomain
       - LDAP_BIND_PW=admin
-      - LDAP_QUERY_FILTER_USER="(&(mail=%s)(mailEnabled=TRUE))"
-      - LDAP_QUERY_FILTER_GROUP="(&(mailGroupMember=%s)(mailEnabled=TRUE))"
-      - LDAP_QUERY_FILTER_ALIAS="(&(mailAlias=%s)(mailEnabled=TRUE))"
-      - DOVECOT_PASS_FILTER="(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))"
-      - DOVECOT_USER_FILTER="(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))"
+      - LDAP_QUERY_FILTER_USER=(&(mail=%s)(mailEnabled=TRUE))
+      - LDAP_QUERY_FILTER_GROUP=(&(mailGroupMember=%s)(mailEnabled=TRUE))
+      - LDAP_QUERY_FILTER_ALIAS=(|(&(mailAlias=%s)(objectClass=PostfixBookMailForward))(&(mailAlias=%s)(objectClass=PostfixBookMailAccount)(mailEnabled=TRUE)))
+      - LDAP_QUERY_FILTER_DOMAIN=(|(&(mail=*@%s)(objectClass=PostfixBookMailAccount)(mailEnabled=TRUE))(&(mailGroupMember=*@%s)(objectClass=PostfixBookMailAccount)(mailEnabled=TRUE))(&(mailalias=*@%s)(objectClass=PostfixBookMailForward)))
+      - DOVECOT_PASS_FILTER=(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))
+      - DOVECOT_USER_FILTER=(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))
       - ENABLE_SASLAUTHD=1
       - SASLAUTHD_MECHANISMS=ldap
       - SASLAUTHD_LDAP_SERVER=ldap
@@ -186,6 +196,7 @@ services:
       - SASLAUTHD_LDAP_PASSWORD=admin
       - SASLAUTHD_LDAP_SEARCH_BASE=ou=people,dc=localhost,dc=localdomain
       - POSTMASTER_ADDRESS=postmaster@localhost.localdomain
+      - POSTFIX_MESSAGE_SIZE_LIMIT=100000000
     cap_add:
       - NET_ADMIN
       - SYS_PTRACE
@@ -247,8 +258,9 @@ Otherwise, `iptables` won't be able to ban IPs.
   - **empty** => SSL disabled
   - letsencrypt => Enables Let's Encrypt certificates
   - custom => Enables custom certificates
-  - manual => Let's you manually specify locations of your SSL certificates for non-standard cases
+  - manual => Let you manually specify locations of your SSL certificates for non-standard cases
   - self-signed => Enables self-signed certificates
+  - _any other value_ => SSL required, settings by default
 
 Please read [the SSL page in the wiki](https://github.com/tomav/docker-mailserver/wiki/Configure-SSL) for more information.
 
@@ -274,7 +286,8 @@ Enables the Sender Rewriting Scheme. SRS is needed if your mail server acts as f
 Set different options for mynetworks option (can be overwrite in postfix-main.cf)
   - **empty** => localhost only
   - host => Add docker host (ipv4 only)
-  - network => Add all docker containers (ipv4 only)
+  - network => Add the docker default bridge network (172.16.0.0/12); **WARNING**: `docker-compose` might use others (e.g. 192.168.0.0/16) use `PERMIT_DOCKER=connected-networks` in this case
+  - connected-networks => Add all connected docker networks (ipv4 only)
 
 ##### VIRUSMAILS_DELETE_DELAY
 
@@ -298,6 +311,18 @@ Enabled by ENABLE_POSTFIX_VIRTUAL_TRANSPORT. Specify the final delivery of postf
 - `lmtps:inet:<host>:<port>` (secure lmtp with starttls, take a look at https://sys4.de/en/blog/2014/11/17/sicheres-lmtp-mit-starttls-in-dovecot/)
 - `lmtp:<kopano-host>:2003` (use kopano as mailstore)
 - etc.
+
+##### POSTFIX\_MAILBOX\_SIZE\_LIMIT
+
+Set the mailbox size limit for all users. If set to zero, the size will be unlimited (default).
+
+- **empty** => 0 (no limit)
+
+##### POSTFIX\_MESSAGE\_SIZE\_LIMIT
+
+Set the message size limit for all users. If set to zero, the size will be unlimited (not recommended!)
+
+- **empty** => 10240000 (~10 MB)
 
 ##### ENABLE_MANAGESIEVE
 
@@ -368,7 +393,7 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
 
   - **6.31** => triggers spam evasive actions
 
-Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
+Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`. By default, the mailserver is configured to quarantine spam emails. If emails are quarantined, they are compressed and stored in a location dependent on the ONE_DIR setting above. If `ONE_DIR=1` the location is /var/mail-state/lib-amavis/virusmails/. If `ONE_DIR=0` it is /var/lib/amavis/virusmails/. These paths are inside the docker container. To inhibit this behaviour and deliver spam emails, set this to a very high value e.g. 100.0.
 
 ##### SA_SPAM_SUBJECT
 
@@ -393,7 +418,7 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
   - 1 => LDAP authentification is enabled
   - NOTE:
     - A second container for the ldap service is necessary (e.g. [docker-openldap](https://github.com/osixia/docker-openldap))
-    - For preparing the ldap server to use in combination with this continer [this](http://acidx.net/wordpress/2014/06/installing-a-mailserver-with-postfix-dovecot-sasl-ldap-roundcube/) article may be helpful
+    - For preparing the ldap server to use in combination with this container [this](http://acidx.net/wordpress/2014/06/installing-a-mailserver-with-postfix-dovecot-sasl-ldap-roundcube/) article may be helpful
 
 ##### LDAP_START_TLS
 
@@ -423,18 +448,23 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
 
 ##### LDAP_QUERY_FILTER_USER
 
-  - e.g. `"(&(mail=%s)(mailEnabled=TRUE))"`
+  - e.g. `(&(mail=%s)(mailEnabled=TRUE))`
   - => Specify how ldap should be asked for users
 
 ##### LDAP_QUERY_FILTER_GROUP
 
-  - e.g. `"(&(mailGroupMember=%s)(mailEnabled=TRUE))"`
+  - e.g. `(&(mailGroupMember=%s)(mailEnabled=TRUE))`
   - => Specify how ldap should be asked for groups
 
 ##### LDAP_QUERY_FILTER_ALIAS
 
-  - e.g. `"(&(mailAlias=%s)(mailEnabled=TRUE))"`
+  - e.g. `(&(mailAlias=%s)(mailEnabled=TRUE))`
   - => Specify how ldap should be asked for aliases
+
+##### LDAP_QUERY_FILTER_DOMAIN
+
+- e.g. `(&(|(mail=*@%s)(mailalias=*@%s)(mailGroupMember=*@%s))(mailEnabled=TRUE))`
+- => Specify how ldap should be asked for domains
 
 ##### DOVECOT_TLS
 
@@ -443,13 +473,31 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
 
 ## Dovecot
 
+The following variables overwrite the default values for ```/etc/dovecot/dovecot-ldap.conf.ext```.
+
 ##### DOVECOT_USER_FILTER
 
-  - e.g. `"(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))"`
+  - e.g. `(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))`
+
+##### DOVECOT_USER_ATTRS
+
+ - e.g. `homeDirectory=home,qmailUID=uid,qmailGID=gid,mailMessageStore=mail`
+ - => Specify the directory to dovecot attribute mapping that fits your directory structure.
+ - Note: This is necessary for directories that do not use the [Postfix Book Schema](test/docker-openldap/bootstrap/schema/mmc/postfix-book.schema).
+ - Note: The left-hand value is the directory attribute, the right hand value is the dovecot variable.
+ - More details on the [Dovecot Wiki](https://wiki.dovecot.org/AuthDatabase/LDAP/Userdb)
 
 ##### DOVECOT_PASS_FILTER
 
-  - e.g. `"(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))"`
+  - e.g. `(&(objectClass=PostfixBookMailAccount)(uniqueIdentifier=%n))`
+
+##### DOVECOT_PASS_ATTRS
+
+- e.g. `uid=user,userPassword=password`
+- => Specify the directory to dovecot variable mapping that fits your directory structure.
+- Note: This is necessary for directories that do not use the [Postfix Book Schema](test/docker-openldap/bootstrap/schema/mmc/postfix-book.schema).
+- Note: The left-hand value is the directory attribute, the right hand value is the dovecot variable.
+- More details on the [Dovecot Wiki](https://wiki.dovecot.org/AuthDatabase/LDAP/PasswordLookups)
 
 ## Postgrey
 
@@ -467,6 +515,12 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 ##### POSTGREY_MAX_AGE
 
   - **35** => delete entries older than N days since the last time that they have been seen
+
+Note: This postgrey setting needs `ENABLE_POSTGREY=1`
+
+##### POSTGREY_AUTO_WHITELIST_CLIENTS
+
+  - **5** => whitelist host after N successful deliveries (N=0 to disable whitelisting)
 
 Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 
@@ -509,7 +563,7 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 ##### SASLAUTHD_LDAP_BIND_DN
 
   - empty => anonymous bind
-  - specify an object with priviliges to search the directory tree
+  - specify an object with privileges to search the directory tree
   - e.g. active directory: SASLAUTHD_LDAP_BIND_DN=cn=Administrator,cn=Users,dc=mydomain,dc=net
   - e.g. openldap: SASLAUTHD_LDAP_BIND_DN=cn=admin,dc=mydomain,dc=net
 
@@ -538,7 +592,7 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 ##### SRS_EXCLUDE_DOMAINS
 
   - **empty** => Envelope sender will be rewritten for all domains
-  - provide comma seperated list of domains to exclude from rewriting
+  - provide comma separated list of domains to exclude from rewriting
 
 ##### SRS_SECRET
 
@@ -552,6 +606,13 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 
   - **empty** => Derived from OVERRIDE_HOSTNAME, DOMAINNAME, or the container's hostname
   - Set this if auto-detection fails, isn't what you want, or you wish to have a separate container handle DSNs
+
+## Default Relay Host
+
+#### DEFAULT_RELAY_HOST
+
+  - **empty** => don't set default relayhost setting in main.cf
+  - default host and port to relay all mail through
 
 ## Multi-domain Relay Hosts
 
