@@ -9,24 +9,25 @@ Easy to deploy and upgrade.
 
 Includes:
 
-- postfix with smtp or ldap auth
-- dovecot for sasl, imap (and optional pop3) with ssl support, with ldap auth
+- [Postfix](http://www.postfix.org) with smtp or ldap auth
+- [Dovecot](https://www.dovecot.org) for sasl, imap (and optional pop3) with ssl support, with ldap auth
+  - Dovecot is installed from the [Dovecot Community Repo](https://wiki2.dovecot.org/PrebuiltBinaries)
 - saslauthd with ldap auth
-- [amavis](https://www.amavis.org/)
-- [spamassasin](http://spamassassin.apache.org/) supporting custom rules
-- [clamav](https://www.clamav.net/) with automatic updates
-- opendkim
-- opendmarc
-- [fail2ban](https://www.fail2ban.org/wiki/index.php/Main_Page)
-- [fetchmail](http://www.fetchmail.info/fetchmail-man.html)
-- [postscreen](http://www.postfix.org/POSTSCREEN_README.html)
-- [postgrey](https://postgrey.schweikert.ch/)
-- basic [sieve support](https://github.com/tomav/docker-mailserver/wiki/Configure-Sieve-filters) using dovecot
+- [Amavis](https://www.amavis.org/)
+- [Spamassasin](http://spamassassin.apache.org/) supporting custom rules
+- [ClamAV](https://www.clamav.net/) with automatic updates
+- [OpenDKIM](http://www.opendkim.org)
+- [OpenDMARC](https://github.com/trusteddomainproject/OpenDMARC)
+- [Fail2ban](https://www.fail2ban.org/wiki/index.php/Main_Page)
+- [Fetchmail](http://www.fetchmail.info/fetchmail-man.html)
+- [Postscreen](http://www.postfix.org/POSTSCREEN_README.html)
+- [Postgrey](https://postgrey.schweikert.ch/)
+- basic [Sieve support](https://github.com/tomav/docker-mailserver/wiki/Configure-Sieve-filters) using dovecot
 - [LetsEncrypt](https://letsencrypt.org/) and self-signed certificates
-- [setup script](https://github.com/tomav/docker-mailserver/wiki/Setup-docker-mailserver-using-the-script-setup.sh) to easily configure and maintain your mailserver
+- [Setup script](https://github.com/tomav/docker-mailserver/wiki/Setup-docker-mailserver-using-the-script-setup.sh) to easily configure and maintain your mailserver
 - persistent data and state (but think about backups!)
-- [integration tests](https://travis-ci.org/tomav/docker-mailserver)
-- [automated builds on docker hub](https://hub.docker.com/r/tvial/docker-mailserver/)
+- [Integration tests](https://travis-ci.org/tomav/docker-mailserver)
+- [Automated builds on docker hub](https://hub.docker.com/r/tvial/docker-mailserver/)
 
 Why I created this image: [Simple mail server with Docker](http://tvi.al/simple-mail-server-with-docker/)
 
@@ -62,8 +63,10 @@ Download the docker-compose.yml, the .env and the setup.sh files:
 
 #### Create a docker-compose environment
 
-- Edit the `.env` to your liking. Adapt this file with your FQDN.
-  - This file supports only simple `VAR=VAL` lines (see [Documentation](https://docs.docker.com/compose/env-file/)).
+- Edit the files `.env` and `env-mailserver` to your liking:
+  - `.env` contains the configuration for docker-compose
+  - `env-mailserver` contains the configuration for the mailserver container
+  - These files supports only simple `VAR=VAL` lines (see [Documentation](https://docs.docker.com/compose/env-file/)).
   - Don't quote your values.
   - Variable substitution is *not* supported (e.g. `OVERRIDE_HOSTNAME=$HOSTNAME.$DOMAINNAME`).
 - Install [docker-compose](https://docs.docker.com/compose/) in the version `1.7` or higher.
@@ -131,6 +134,7 @@ services:
     volumes:
       - maildata:/var/mail
       - mailstate:/var/mail-state
+      - maillogs:/var/log/mail
       - ./config/:/tmp/docker-mailserver/
     environment:
       - ENABLE_SPAMASSASSIN=1
@@ -147,6 +151,8 @@ volumes:
   maildata:
     driver: local
   mailstate:
+    driver: local
+  maillogs:
     driver: local
 ```
 
@@ -169,6 +175,7 @@ services:
     volumes:
       - maildata:/var/mail
       - mailstate:/var/mail-state
+      - maillogs:/var/log/mail
       - ./config/:/tmp/docker-mailserver/
     environment:
       - ENABLE_SPAMASSASSIN=1
@@ -204,6 +211,8 @@ volumes:
   maildata:
     driver: local
   mailstate:
+    driver: local
+  maillogs:
     driver: local
 ```
 
@@ -346,28 +355,81 @@ Set the message size limit for all users. If set to zero, the size will be unlim
   - ignore => Ignore the failure of this test. Allow other tests to complete. Repeat this test the next time the client connects. This option is useful for testing and collecting statistics without blocking mail.
 
 
-##### REPORT_RECIPIENT
+## Reports
+
+##### PFLOGSUMM_TRIGGER
+
+  Enables regular pflogsumm mail reports.
+  - **not set** => No report
+  - daily_cron => Daily report for the previous day
+  - logrotate => Full report based on the mail log when it is rotated
+
+This is a new option. The old REPORT options are still supported for backwards compatibility.
+If this is not set and reports are enabled with the old options, logrotate will be used.
+
+##### PFLOGSUMM_RECIPIENT
+
+  Recipient address for pflogsumm reports.
+  - **not set** => Use REPORT_RECIPIENT or POSTMASTER_ADDRESS
+  - => Specify the recipient address(es)
+
+##### PFLOGSUMM_SENDER
+
+  From address for pflogsumm reports.
+  - **not set** => Use REPORT_SENDER or POSTMASTER_ADDRESS
+  - => Specify the sender address
+
+##### LOGWATCH_INTERVAL
+
+  Interval for logwatch report.
+  - **none** => No report is generated
+  - daily => Send a daily report
+  - weekly => Send a report every week
+
+##### LOGWATCH_RECIPIENT
+
+  Recipient address for logwatch reports if they are enabled.
+  - **not set** => Use REPORT_RECIPIENT or POSTMASTER_ADDRESS
+  - => Specify the recipient address(es)
+
+##### REPORT_RECIPIENT (deprecated)
 
   Enables a report being sent (created by pflogsumm) on a regular basis.
-  - **0** => Report emails are disabled
+  - **0** => Report emails are disabled unless enabled by other options
   - 1 => Using POSTMASTER_ADDRESS as the recipient
   - => Specify the recipient address
 
-##### REPORT_SENDER
+##### REPORT_SENDER (deprecated)
 
   Change the sending address for mail report
   - **empty** => mailserver-report@hostname
   - => Specify the report sender (From) address
 
+##### REPORT_INTERVAL (deprecated)
 
-##### REPORT_INTERVAL
-
-  changes the interval in which a report is being sent.
+  changes the interval in which logs are rotated and a report is being sent (deprecated).
   - **daily** => Send a daily report
   - weekly => Send a report every week
   - monthly => Send a report every month
 
-Note: This Variable actually controls logrotate inside the container and rotates the log depending on this setting. The main log output is still available in its entirety via `docker logs mail` (Or your respective container name). If you want to control logrotation for the docker generated logfile see: [Docker Logging Drivers](https://docs.docker.com/config/containers/logging/configure/)
+Note: This variable used to control logrotate inside the container and sent the pflogsumm report when the logs were rotated.
+It is still supported for backwards compatibility, but the new option LOGROTATE_INTERVAL has been added that only rotates
+the logs. 
+
+##### LOGROTATE_INTERVAL 
+
+  Defines the interval in which the mail log is being rotated.
+  - **daily** => Rotate daily.
+  - weekly => Rotate weekly.
+  - monthly => Rotate monthly.
+
+Note that only the log inside the container is affected.
+The full log output is still available via `docker logs mail` (or your respective container name).
+If you want to control logrotation for the docker generated logfile see: [Docker Logging Drivers](https://docs.docker.com/config/containers/logging/configure/).
+
+Also note that by default the logs are lost when the container is recycled. To keep the logs, mount a volume.
+
+Finally the logrotate interval **may** affect the period for generated reports. That is the case when the reports are triggered by log rotation.
 
 ## Spamassassin
 

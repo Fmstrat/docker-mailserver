@@ -17,8 +17,8 @@ ENV SASLAUTHD_MECH_OPTIONS=""
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Packages
-# hadolint ignore=DL3015,SC2016
-RUN echo "deb http://ftp.debian.org/debian stretch-backports main" | tee -a /etc/apt/sources.list.d/stretch-bp.list && \
+# hadolint ignore=DL3015
+RUN echo "deb http://http.debian.net/debian stretch-backports main" | tee -a /etc/apt/sources.list.d/stretch-bp.list && \
   apt-get update -q --fix-missing && \
   apt-get -y install postfix && \
   # TODO installing postfix with --no-install-recommends makes "checking ssl: generated default cert works correctly" fail
@@ -44,6 +44,8 @@ RUN echo "deb http://ftp.debian.org/debian stretch-backports main" | tee -a /etc
     iproute2 \
     iptables \
     locales \
+    logwatch \
+    libdate-manip-perl \
     liblz4-tool \
     libmail-spf-perl \
     libnet-dns-perl \
@@ -78,9 +80,10 @@ RUN echo "deb http://ftp.debian.org/debian stretch-backports main" | tee -a /etc
     xz-utils \
     zoo \
     && \
+  # use Dovecot community repo to react faster on security updates
   curl https://repo.dovecot.org/DOVECOT-REPO-GPG | gpg --import && \
   gpg --export ED409DA1 > /etc/apt/trusted.gpg.d/dovecot.gpg && \
-  echo "deb https://repo.dovecot.org/ce-2.3-latest/debian/stretch stretch main" > /etc/apt/sources.list.d/dovecot.list && \
+  echo "deb https://repo.dovecot.org/ce-2.3-latest/debian/stretch stretch main" > /etc/apt/sources.list.d/dovecot-community.list && \
   apt-get update -q --fix-missing && \
   apt-get -y install --no-install-recommends \
     dovecot-core \
@@ -92,9 +95,6 @@ RUN echo "deb http://ftp.debian.org/debian stretch-backports main" | tee -a /etc
     dovecot-sieve \
     dovecot-mysql \
     && \
-  sed -i 's/CERTDIR=.*/CERTDIR=\/etc\/dovecot\/ssl/g' /usr/share/dovecot/mkcert.sh && \
-  sed -i 's/KEYDIR=.*/KEYDIR=\/etc\/dovecot\/ssl/g' /usr/share/dovecot/mkcert.sh && \
-  sed -i 's/KEYFILE=.*/KEYFILE=\$KEYDIR\/dovecot.key/g' /usr/share/dovecot/mkcert.sh && \
   apt-get autoclean && \
   rm -rf /var/lib/apt/lists/* && \
   rm -rf /usr/share/locale/* && \
@@ -103,7 +103,8 @@ RUN echo "deb http://ftp.debian.org/debian stretch-backports main" | tee -a /etc
   touch /var/log/auth.log && \
   update-locale && \
   rm -f /etc/cron.weekly/fstrim && \
-  rm -f /etc/postsrsd.secret
+  rm -f /etc/postsrsd.secret && \
+  rm -f /etc/cron.daily/00logwatch
 
 # install filebeat for logging
 RUN curl https://packages.elasticsearch.org/GPG-KEY-elasticsearch | apt-key add - && \
@@ -134,7 +135,11 @@ RUN sed -i -e 's/include_try \/usr\/share\/dovecot\/protocols\.d/include_try \/e
   sed -i -e 's/^.*lda_mailbox_autosubscribe.*/lda_mailbox_autosubscribe = yes/g' /etc/dovecot/conf.d/15-lda.conf && \
   sed -i -e 's/^.*postmaster_address.*/postmaster_address = '${POSTMASTER_ADDRESS:="postmaster@domain.com"}'/g' /etc/dovecot/conf.d/15-lda.conf && \
   sed -i 's/#imap_idle_notify_interval = 2 mins/imap_idle_notify_interval = 29 mins/' /etc/dovecot/conf.d/20-imap.conf && \
-  # stretch-backport of dovecot needs this folder
+  # Adapt mkcert for Dovecot community repo
+  sed -i 's/CERTDIR=.*/CERTDIR=\/etc\/dovecot\/ssl/g' /usr/share/dovecot/mkcert.sh && \
+  sed -i 's/KEYDIR=.*/KEYDIR=\/etc\/dovecot\/ssl/g' /usr/share/dovecot/mkcert.sh && \
+  sed -i 's/KEYFILE=.*/KEYFILE=\$KEYDIR\/dovecot.key/g' /usr/share/dovecot/mkcert.sh && \
+  # create directory for certificates created by mkcert
   mkdir /etc/dovecot/ssl && \
   chmod 755 /etc/dovecot/ssl  && \
   ./mkcert.sh  && \

@@ -33,7 +33,8 @@ DEFAULT_VARS["SPOOF_PROTECTION"]="${SPOOF_PROTECTION:="0"}"
 DEFAULT_VARS["TLS_LEVEL"]="${TLS_LEVEL:="modern"}"
 DEFAULT_VARS["ENABLE_SRS"]="${ENABLE_SRS:="0"}"
 DEFAULT_VARS["REPORT_RECIPIENT"]="${REPORT_RECIPIENT:="0"}"
-DEFAULT_VARS["REPORT_INTERVAL"]="${REPORT_INTERVAL:="daily"}"
+DEFAULT_VARS["LOGROTATE_INTERVAL"]="${LOGROTATE_INTERVAL:=${REPORT_INTERVAL:-"daily"}}"
+DEFAULT_VARS["LOGWATCH_INTERVAL"]="${LOGWATCH_INTERVAL:="none"}"
 DEFAULT_VARS["VIRUSMAILS_DELETE_DELAY"]="${VIRUSMAILS_DELETE_DELAY:="7"}"
 
 ##########################################################################
@@ -124,7 +125,6 @@ function register_functions() {
 
 	_register_setup_function "_setup_postfix_smtputf8"
 	_register_setup_function "_setup_postfix_sasl"
-	_register_setup_function "_setup_postfix_override_configuration"
 	_register_setup_function "_setup_postfix_sasl_password"
 	_register_setup_function "_setup_security_stack"
 	_register_setup_function "_setup_postfix_aliases"
@@ -160,12 +160,19 @@ function register_functions() {
 		_register_setup_function "_setup_postfix_virtual_transport"
 	fi
 
+	_register_setup_function "_setup_postfix_override_configuration"
+
   _register_setup_function "_setup_environment"
   _register_setup_function "_setup_logrotate"
 
-  if [ "$REPORT_RECIPIENT" != 0 ]; then
-  	_register_setup_function "_setup_mail_summary"
-  fi
+	if [ "$PFLOGSUMM_TRIGGER" != "none" ]; then
+		_register_setup_function "_setup_mail_summary"
+	fi
+
+	if [ "$LOGWATCH_TRIGGER" != "none" ]; then
+		_register_setup_function "_setup_logwatch"
+	fi
+
 
         # Compute last as the config files are modified in-place
         _register_setup_function "_setup_chksum_file"
@@ -437,8 +444,26 @@ function _setup_default_vars() {
 
 	# update POSTMASTER_ADDRESS - must be done done after _check_hostname()
 	DEFAULT_VARS["POSTMASTER_ADDRESS"]="${POSTMASTER_ADDRESS:=postmaster@${DOMAINNAME}}"
-    # update REPORT_SENDER - must be done done after _check_hostname()
-    DEFAULT_VARS["REPORT_SENDER"]="${REPORT_SENDER:=mailserver-report@${HOSTNAME}}"
+
+	# update REPORT_SENDER - must be done done after _check_hostname()
+	DEFAULT_VARS["REPORT_SENDER"]="${REPORT_SENDER:=mailserver-report@${HOSTNAME}}"
+	DEFAULT_VARS["PFLOGSUMM_SENDER"]="${PFLOGSUMM_SENDER:=${REPORT_SENDER}}"
+
+	# set PFLOGSUMM_TRIGGER here for backwards compatibility
+	# when REPORT_RECIPIENT is on the old method should be used
+	if [ "$REPORT_RECIPIENT" == "0" ]; then
+		DEFAULT_VARS["PFLOGSUMM_TRIGGER"]="${PFLOGSUMM_TRIGGER:="none"}"
+	else
+		DEFAULT_VARS["PFLOGSUMM_TRIGGER"]="${PFLOGSUMM_TRIGGER:="logrotate"}"
+	fi
+
+	# Expand address to simplify the rest of the script
+	if [ "$REPORT_RECIPIENT" == "0" ] || [ "$REPORT_RECIPIENT" == "1" ]; then
+		REPORT_RECIPIENT="$POSTMASTER_ADDRESS"
+		DEFAULT_VARS["REPORT_RECIPIENT"]="${REPORT_RECIPIENT}"
+	fi
+	DEFAULT_VARS["PFLOGSUMM_RECIPIENT"]="${PFLOGSUMM_RECIPIENT:=${REPORT_RECIPIENT}}"
+	DEFAULT_VARS["LOGWATCH_RECIPIENT"]="${LOGWATCH_RECIPIENT:=${REPORT_RECIPIENT}}"
 
 	for var in ${!DEFAULT_VARS[@]}; do
 		echo "export $var=\"${DEFAULT_VARS[$var]}\"" >> /root/.bashrc
@@ -625,7 +650,7 @@ function _setup_dovecot_local_user() {
 
 	if [[ ! $(grep '@' /tmp/docker-mailserver/postfix-accounts.cf | grep '|') ]]; then
 		if [ $ENABLE_LDAP -eq 0 ]; then
-			notify 'fatal' "Unless using LDAP, you need at least 1 email account to start the server."
+			notify 'fatal' "Unless using LDAP, you need at least 1 email account to start Dovecot."
 			defunc
 		fi
 	fi
@@ -898,8 +923,8 @@ function _setup_ssl() {
       sed -i -r 's/^smtp_tls_protocols =.*$/smtp_tls_protocols = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1/' /etc/postfix/main.cf
       sed -i -r 's/^tls_high_cipherlist =.*$/tls_high_cipherlist = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256/' /etc/postfix/main.cf
 
-      # Dovecot configuration
-      sed -i -r 's/^ssl_protocols =.*$/ssl_protocols = !SSLv3,!TLSv1,!TLSv1.1/' /etc/dovecot/conf.d/10-ssl.conf
+      # Dovecot configuration (secure by default though)
+      sed -i -r 's/^ssl_min_protocol =.*$/ssl_min_protocol = TLSv1.2/' /etc/dovecot/conf.d/10-ssl.conf
       sed -i -r 's/^ssl_cipher_list =.*$/ssl_cipher_list = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256/' /etc/dovecot/conf.d/10-ssl.conf
 
       notify 'inf' "TLS configured with 'modern' ciphers"
@@ -912,7 +937,7 @@ function _setup_ssl() {
       sed -i -r 's/^tls_high_cipherlist =.*$/tls_high_cipherlist = ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA:!DSS/' /etc/postfix/main.cf
 
       # Dovecot configuration
-      sed -i -r 's/^ssl_protocols = .*$/ssl_protocols = !SSLv3/' /etc/dovecot/conf.d/10-ssl.conf
+      sed -i -r 's/^ssl_min_protocol = .*$/ssl_min_protocol = TLSv1/' /etc/dovecot/conf.d/10-ssl.conf
       sed -i -r 's/^ssl_cipher_list = .*$/ssl_cipher_list = ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA:ECDHE-RSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA:ECDHE-ECDSA-DES-CBC3-SHA:ECDHE-RSA-DES-CBC3-SHA:EDH-RSA-DES-CBC3-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:DES-CBC3-SHA:!DSS/' /etc/dovecot/conf.d/10-ssl.conf
 
       notify 'inf' "TLS configured with 'intermediate' ciphers"
@@ -1384,17 +1409,17 @@ function _setup_logrotate() {
 	notify 'inf' "Setting up logrotate"
 
 	LOGROTATE="/var/log/mail/mail.log\n{\n  compress\n  copytruncate\n  delaycompress\n"
-	case "$REPORT_INTERVAL" in
+	case "$LOGROTATE_INTERVAL" in
 		"daily" )
-			notify 'inf' "Setting postfix summary interval to daily"
+			notify 'inf' "Setting postfix logrotate interval to daily"
 			LOGROTATE="$LOGROTATE  rotate 1\n  daily\n"
 			;;
 		"weekly" )
-			notify 'inf' "Setting postfix summary interval to weekly"
+			notify 'inf' "Setting postfix logrotate interval to weekly"
 			LOGROTATE="$LOGROTATE  rotate 1\n  weekly\n"
 			;;
 		"monthly" )
-			notify 'inf' "Setting postfix summary interval to monthly"
+			notify 'inf' "Setting postfix logrotate interval to monthly"
 			LOGROTATE="$LOGROTATE  rotate 1\n  monthly\n"
 			;;
 	esac
@@ -1403,10 +1428,41 @@ function _setup_logrotate() {
 }
 
 function _setup_mail_summary() {
-	notify 'inf' "Enable postfix summary with recipient $REPORT_RECIPIENT"
-	[ "$REPORT_RECIPIENT" = 1 ] && REPORT_RECIPIENT=$POSTMASTER_ADDRESS
-	sed -i "s|}|  postrotate\n    /usr/local/bin/postfix-summary $HOSTNAME \
-    $REPORT_RECIPIENT $REPORT_SENDER\n  endscript\n}\n|" /etc/logrotate.d/maillog
+	notify 'inf' "Enable postfix summary with recipient $PFLOGSUMM_RECIPIENT"
+        case "$PFLOGSUMM_TRIGGER" in
+                "daily_cron" )
+                        notify 'inf' "Creating daily cron job for pflogsumm report"
+			echo "#!/bin/bash" > /etc/cron.daily/postfix-summary
+			echo "/usr/local/bin/report-pflogsumm-yesterday $HOSTNAME $PFLOGSUMM_RECIPIENT $PFLOGSUMM_SENDER" \
+			 >> /etc/cron.daily/postfix-summary
+			chmod +x /etc/cron.daily/postfix-summary
+                        ;;
+                "logrotate" )
+                        notify 'inf' "Add postrotate action for pflogsumm report"
+			sed -i "s|}|  postrotate\n    /usr/local/bin/postfix-summary $HOSTNAME \
+    $PFLOGSUMM_RECIPIENT $PFLOGSUMM_SENDER\n  endscript\n}\n|" /etc/logrotate.d/maillog
+                        ;;
+        esac
+}
+
+function _setup_logwatch() {
+	notify 'inf' "Enable logwatch reports with recipient $LOGWATCH_RECIPIENT"
+	case "$LOGWATCH_INTERVAL" in
+		"daily" )
+			notify 'inf' "Creating daily cron job for logwatch reports"
+			echo "#!/bin/bash" > /etc/cron.daily/logwatch
+			echo "/usr/sbin/logwatch --range Yesterday --hostname $HOSTNAME --mailto $LOGWATCH_RECIPIENT" \
+			>> /etc/cron.daily/logwatch
+			chmod 744 /etc/cron.daily/logwatch
+			;;
+		"weekly" )
+			notify 'inf' "Creating weekly cron job for logwatch reports"
+			echo "#!/bin/bash" > /etc/cron.weekly/logwatch
+			echo "/usr/sbin/logwatch --range 'between -7 days and -1 days' --hostname $HOSTNAME --mailto $LOGWATCH_RECIPIENT" \
+			>> /etc/cron.weekly/logwatch
+			chmod 744 /etc/cron.weekly/logwatch
+			;;
+	esac
 }
 
 function _setup_environment() {
