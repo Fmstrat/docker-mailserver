@@ -37,13 +37,14 @@ Before you open an issue, please have a look this `README`, the [Wiki](https://g
 
 Recommended:
 - 1 CPU
-- 1GB RAM
+- 1-2GB RAM
+- Swap enabled for the container
 
 Minimum:
 - 1 CPU
 - 512MB RAM
 
-**Note:** You'll need to deactivate some services like ClamAV to be able to run on a host with 512MB of RAM.
+**Note:** You'll need to deactivate some services like ClamAV to be able to run on a host with 512MB of RAM. Even with 1G RAM you may run into problems without swap, see FAQ.
 
 ## Usage
 
@@ -60,6 +61,8 @@ Download the docker-compose.yml, the .env and the setup.sh files:
     curl -o docker-compose.yml https://raw.githubusercontent.com/tomav/docker-mailserver/master/docker-compose.yml.dist
 
     curl -o .env https://raw.githubusercontent.com/tomav/docker-mailserver/master/.env.dist
+    
+    curl -o env-mailserver https://raw.githubusercontent.com/tomav/docker-mailserver/master/env-mailserver.dist
 
 #### Create a docker-compose environment
 
