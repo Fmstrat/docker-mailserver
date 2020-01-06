@@ -17,6 +17,7 @@ DEFAULT_VARS["FETCHMAIL_POLL"]="${FETCHMAIL_POLL:="300"}"
 DEFAULT_VARS["ENABLE_LDAP"]="${ENABLE_LDAP:="0"}"
 DEFAULT_VARS["LDAP_START_TLS"]="${LDAP_START_TLS:="no"}"
 DEFAULT_VARS["DOVECOT_TLS"]="${DOVECOT_TLS:="no"}"
+DEFAULT_VARS["DOVECOT_MAILBOX_FORMAT"]="${DOVECOT_MAILBOX_FORMAT:="maildir"}"
 DEFAULT_VARS["ENABLE_POSTGREY"]="${ENABLE_POSTGREY:="0"}"
 DEFAULT_VARS["POSTGREY_DELAY"]="${POSTGREY_DELAY:="300"}"
 DEFAULT_VARS["POSTGREY_MAX_AGE"]="${POSTGREY_MAX_AGE:="35"}"
@@ -32,8 +33,10 @@ DEFAULT_VARS["POSTSCREEN_ACTION"]="${POSTSCREEN_ACTION:="enforce"}"
 DEFAULT_VARS["SPOOF_PROTECTION"]="${SPOOF_PROTECTION:="0"}"
 DEFAULT_VARS["TLS_LEVEL"]="${TLS_LEVEL:="modern"}"
 DEFAULT_VARS["ENABLE_SRS"]="${ENABLE_SRS:="0"}"
+DEFAULT_VARS["SRS_SENDER_CLASSES"]="${SRS_SENDER_CLASSES:="envelope_sender"}"
 DEFAULT_VARS["REPORT_RECIPIENT"]="${REPORT_RECIPIENT:="0"}"
-DEFAULT_VARS["REPORT_INTERVAL"]="${REPORT_INTERVAL:="daily"}"
+DEFAULT_VARS["LOGROTATE_INTERVAL"]="${LOGROTATE_INTERVAL:=${REPORT_INTERVAL:-"daily"}}"
+DEFAULT_VARS["LOGWATCH_INTERVAL"]="${LOGWATCH_INTERVAL:="none"}"
 DEFAULT_VARS["VIRUSMAILS_DELETE_DELAY"]="${VIRUSMAILS_DELETE_DELAY:="7"}"
 
 ##########################################################################
@@ -89,6 +92,7 @@ function register_functions() {
 	################### >> setup funcs
 
 	_register_setup_function "_setup_default_vars"
+	_register_setup_function "_setup_file_permissions"
 
 	if [ "$ENABLE_ELK_FORWARDER" = 1 ]; then
 		_register_setup_function "_setup_elk_forwarder"
@@ -124,7 +128,6 @@ function register_functions() {
 
 	_register_setup_function "_setup_postfix_smtputf8"
 	_register_setup_function "_setup_postfix_sasl"
-	_register_setup_function "_setup_postfix_override_configuration"
 	_register_setup_function "_setup_postfix_sasl_password"
 	_register_setup_function "_setup_security_stack"
 	_register_setup_function "_setup_postfix_aliases"
@@ -160,12 +163,20 @@ function register_functions() {
 		_register_setup_function "_setup_postfix_virtual_transport"
 	fi
 
+	_register_setup_function "_setup_postfix_override_configuration"
+
   _register_setup_function "_setup_environment"
   _register_setup_function "_setup_logrotate"
 
-  if [ "$REPORT_RECIPIENT" != 0 ]; then
-  	_register_setup_function "_setup_mail_summary"
-  fi
+	if [ "$PFLOGSUMM_TRIGGER" != "none" ]; then
+		_register_setup_function "_setup_mail_summary"
+	fi
+
+	if [ "$LOGWATCH_TRIGGER" != "none" ]; then
+		_register_setup_function "_setup_logwatch"
+	fi
+	
+	_register_setup_function "_setup_user_patches"
 
         # Compute last as the config files are modified in-place
         _register_setup_function "_setup_chksum_file"
@@ -437,14 +448,52 @@ function _setup_default_vars() {
 
 	# update POSTMASTER_ADDRESS - must be done done after _check_hostname()
 	DEFAULT_VARS["POSTMASTER_ADDRESS"]="${POSTMASTER_ADDRESS:=postmaster@${DOMAINNAME}}"
-    # update REPORT_SENDER - must be done done after _check_hostname()
-    DEFAULT_VARS["REPORT_SENDER"]="${REPORT_SENDER:=mailserver-report@${HOSTNAME}}"
+
+	# update REPORT_SENDER - must be done done after _check_hostname()
+	DEFAULT_VARS["REPORT_SENDER"]="${REPORT_SENDER:=mailserver-report@${HOSTNAME}}"
+	DEFAULT_VARS["PFLOGSUMM_SENDER"]="${PFLOGSUMM_SENDER:=${REPORT_SENDER}}"
+
+	# set PFLOGSUMM_TRIGGER here for backwards compatibility
+	# when REPORT_RECIPIENT is on the old method should be used
+	if [ "$REPORT_RECIPIENT" == "0" ]; then
+		DEFAULT_VARS["PFLOGSUMM_TRIGGER"]="${PFLOGSUMM_TRIGGER:="none"}"
+	else
+		DEFAULT_VARS["PFLOGSUMM_TRIGGER"]="${PFLOGSUMM_TRIGGER:="logrotate"}"
+	fi
+
+	# Expand address to simplify the rest of the script
+	if [ "$REPORT_RECIPIENT" == "0" ] || [ "$REPORT_RECIPIENT" == "1" ]; then
+		REPORT_RECIPIENT="$POSTMASTER_ADDRESS"
+		DEFAULT_VARS["REPORT_RECIPIENT"]="${REPORT_RECIPIENT}"
+	fi
+	DEFAULT_VARS["PFLOGSUMM_RECIPIENT"]="${PFLOGSUMM_RECIPIENT:=${REPORT_RECIPIENT}}"
+	DEFAULT_VARS["LOGWATCH_RECIPIENT"]="${LOGWATCH_RECIPIENT:=${REPORT_RECIPIENT}}"
 
 	for var in ${!DEFAULT_VARS[@]}; do
 		echo "export $var=\"${DEFAULT_VARS[$var]}\"" >> /root/.bashrc
 		[ $? != 0 ] && notify 'err' "Unable to set $var=${DEFAULT_VARS[$var]}" && kill -15 `cat /var/run/supervisord.pid` && return 1
 		notify 'inf' "Set $var=${DEFAULT_VARS[$var]}"
 	done
+}
+
+# File/folder permissions are fine when using docker volumes, but may be wrong
+# when file system folders are mounted into the container.
+# Set the expected values and create missing folders/files just in case.
+function _setup_file_permissions() {
+	notify 'task' "Setting file/folder permissions"
+
+	mkdir -p /var/log/supervisor
+
+	mkdir -p /var/log/mail
+	chown syslog:root /var/log/mail
+
+	touch /var/log/mail/clamav.log
+	chown clamav:adm /var/log/mail/clamav.log
+	chmod 640 /var/log/mail/clamav.log
+
+	touch /var/log/mail/freshclam.log
+	chown clamav:adm /var/log/mail/freshclam.log
+	chmod 640 /var/log/mail/freshclam.log
 }
 
 function _setup_chksum_file() {
@@ -540,6 +589,18 @@ function _setup_dovecot() {
 	sed -i -e 's/#ssl = yes/ssl = required/g' /etc/dovecot/conf.d/10-ssl.conf
 	sed -i 's/^postmaster_address = .*$/postmaster_address = '$POSTMASTER_ADDRESS'/g' /etc/dovecot/conf.d/15-lda.conf
 
+    # Set mail_location according to mailbox format
+    case "$DOVECOT_MAILBOX_FORMAT" in
+        sdbox|mdbox|maildir )
+            notify 'inf' "Dovecot $DOVECOT_MAILBOX_FORMAT format configured"
+            sed -i -e 's/^mail_location = .*$/mail_location = '$DOVECOT_MAILBOX_FORMAT':\/var\/mail\/%d\/%n/g' /etc/dovecot/conf.d/10-mail.conf
+            ;;
+        * )
+            notify 'inf' "Dovecot maildir format configured (default)"
+            sed -i -e 's/^mail_location = .*$/mail_location = maildir:\/var\/mail\/%d\/%n/g' /etc/dovecot/conf.d/10-mail.conf
+            ;;
+    esac
+
 	# Enable Managesieve service by setting the symlink
 	# to the configuration file Dovecot will actually find
 	if [ "$ENABLE_MANAGESIEVE" = 1 ]; then
@@ -606,15 +667,7 @@ function _setup_dovecot_local_user() {
 			# Example :
 			# ${login}:${pass}:5000:5000::/var/mail/${domain}/${user}::userdb_mail=maildir:/var/mail/${domain}/${user}
 			echo "${login}:${pass}:5000:5000::/var/mail/${domain}/${user}::" >> /etc/dovecot/userdb
-			mkdir -p /var/mail/${domain}
-			if [ ! -d "/var/mail/${domain}/${user}" ]; then
-				maildirmake.dovecot "/var/mail/${domain}/${user}"
-				maildirmake.dovecot "/var/mail/${domain}/${user}/.Sent"
-				maildirmake.dovecot "/var/mail/${domain}/${user}/.Trash"
-				maildirmake.dovecot "/var/mail/${domain}/${user}/.Drafts"
-				echo -e "INBOX\nSent\nTrash\nDrafts" >> "/var/mail/${domain}/${user}/subscriptions"
-				touch "/var/mail/${domain}/${user}/.Sent/maildirfolder"
-			fi
+			mkdir -p /var/mail/${domain}/${user}
 			# Copy user provided sieve file, if present
 			test -e /tmp/docker-mailserver/${login}.dovecot.sieve && cp /tmp/docker-mailserver/${login}.dovecot.sieve /var/mail/${domain}/${user}/.dovecot.sieve
 			echo ${domain} >> /tmp/vhost.tmp
@@ -625,7 +678,7 @@ function _setup_dovecot_local_user() {
 
 	if [[ ! $(grep '@' /tmp/docker-mailserver/postfix-accounts.cf | grep '|') ]]; then
 		if [ $ENABLE_LDAP -eq 0 ]; then
-			notify 'fatal' "Unless using LDAP, you need at least 1 email account to start the server."
+			notify 'fatal' "Unless using LDAP, you need at least 1 email account to start Dovecot."
 			defunc
 		fi
 	fi
@@ -854,7 +907,7 @@ function _setup_postfix_aliases() {
 function _setup_SRS() {
 	notify 'task' 'Setting up SRS'
 	postconf -e "sender_canonical_maps = tcp:localhost:10001"
-	postconf -e "sender_canonical_classes = envelope_sender"
+	postconf -e "sender_canonical_classes = $SRS_SENDER_CLASSES"
 	postconf -e "recipient_canonical_maps = tcp:localhost:10002"
 	postconf -e "recipient_canonical_classes = envelope_recipient,header_recipient"
 }
@@ -1041,6 +1094,8 @@ function _setup_postfix_vhost() {
 
 	if [ -f /tmp/vhost.tmp ]; then
 		cat /tmp/vhost.tmp | sort | uniq > /etc/postfix/vhost && rm /tmp/vhost.tmp
+  elif [ ! -f /etc/postfix/vhost ]; then
+    touch /etc/postfix/vhost
 	fi
 }
 
@@ -1384,17 +1439,17 @@ function _setup_logrotate() {
 	notify 'inf' "Setting up logrotate"
 
 	LOGROTATE="/var/log/mail/mail.log\n{\n  compress\n  copytruncate\n  delaycompress\n"
-	case "$REPORT_INTERVAL" in
+	case "$LOGROTATE_INTERVAL" in
 		"daily" )
-			notify 'inf' "Setting postfix summary interval to daily"
+			notify 'inf' "Setting postfix logrotate interval to daily"
 			LOGROTATE="$LOGROTATE  rotate 1\n  daily\n"
 			;;
 		"weekly" )
-			notify 'inf' "Setting postfix summary interval to weekly"
+			notify 'inf' "Setting postfix logrotate interval to weekly"
 			LOGROTATE="$LOGROTATE  rotate 1\n  weekly\n"
 			;;
 		"monthly" )
-			notify 'inf' "Setting postfix summary interval to monthly"
+			notify 'inf' "Setting postfix logrotate interval to monthly"
 			LOGROTATE="$LOGROTATE  rotate 1\n  monthly\n"
 			;;
 	esac
@@ -1403,10 +1458,53 @@ function _setup_logrotate() {
 }
 
 function _setup_mail_summary() {
-	notify 'inf' "Enable postfix summary with recipient $REPORT_RECIPIENT"
-	[ "$REPORT_RECIPIENT" = 1 ] && REPORT_RECIPIENT=$POSTMASTER_ADDRESS
-	sed -i "s|}|  postrotate\n    /usr/local/bin/postfix-summary $HOSTNAME \
-    $REPORT_RECIPIENT $REPORT_SENDER\n  endscript\n}\n|" /etc/logrotate.d/maillog
+	notify 'inf' "Enable postfix summary with recipient $PFLOGSUMM_RECIPIENT"
+        case "$PFLOGSUMM_TRIGGER" in
+                "daily_cron" )
+                        notify 'inf' "Creating daily cron job for pflogsumm report"
+			echo "#!/bin/bash" > /etc/cron.daily/postfix-summary
+			echo "/usr/local/bin/report-pflogsumm-yesterday $HOSTNAME $PFLOGSUMM_RECIPIENT $PFLOGSUMM_SENDER" \
+			 >> /etc/cron.daily/postfix-summary
+			chmod +x /etc/cron.daily/postfix-summary
+                        ;;
+                "logrotate" )
+                        notify 'inf' "Add postrotate action for pflogsumm report"
+			sed -i "s|}|  postrotate\n    /usr/local/bin/postfix-summary $HOSTNAME \
+    $PFLOGSUMM_RECIPIENT $PFLOGSUMM_SENDER\n  endscript\n}\n|" /etc/logrotate.d/maillog
+                        ;;
+        esac
+}
+
+function _setup_logwatch() {
+	notify 'inf' "Enable logwatch reports with recipient $LOGWATCH_RECIPIENT"
+	case "$LOGWATCH_INTERVAL" in
+		"daily" )
+			notify 'inf' "Creating daily cron job for logwatch reports"
+			echo "#!/bin/bash" > /etc/cron.daily/logwatch
+			echo "/usr/sbin/logwatch --range Yesterday --hostname $HOSTNAME --mailto $LOGWATCH_RECIPIENT" \
+			>> /etc/cron.daily/logwatch
+			chmod 744 /etc/cron.daily/logwatch
+			;;
+		"weekly" )
+			notify 'inf' "Creating weekly cron job for logwatch reports"
+			echo "#!/bin/bash" > /etc/cron.weekly/logwatch
+			echo "/usr/sbin/logwatch --range 'between -7 days and -1 days' --hostname $HOSTNAME --mailto $LOGWATCH_RECIPIENT" \
+			>> /etc/cron.weekly/logwatch
+			chmod 744 /etc/cron.weekly/logwatch
+			;;
+	esac
+}
+
+function _setup_user_patches() {
+	notify 'inf' 'Executing user-patches.sh'
+
+	if [ -f /tmp/docker-mailserver/user-patches.sh ]; then
+		chmod +x /tmp/docker-mailserver/user-patches.sh
+		/tmp/docker-mailserver/user-patches.sh
+		notify 'inf' "Executed 'config/user-patches.sh'"
+	else
+		notify 'inf' "No user patches executed because optional '/tmp/docker-mailserver/user-patches.sh' is not provided."
+	fi
 }
 
 function _setup_environment() {

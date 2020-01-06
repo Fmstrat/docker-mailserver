@@ -28,6 +28,8 @@ Includes:
 - persistent data and state (but think about backups!)
 - [Integration tests](https://travis-ci.org/tomav/docker-mailserver)
 - [Automated builds on docker hub](https://hub.docker.com/r/tvial/docker-mailserver/)
+- Plus addressing (a.k.a. [extension delimiters](http://www.postfix.org/postconf.5.html#recipient_delimiter))
+  works out of the box: email for `you+extension@example.com` go to `you@example.com`
 
 Why I created this image: [Simple mail server with Docker](http://tvi.al/simple-mail-server-with-docker/)
 
@@ -37,13 +39,14 @@ Before you open an issue, please have a look this `README`, the [Wiki](https://g
 
 Recommended:
 - 1 CPU
-- 1GB RAM
+- 1-2GB RAM
+- Swap enabled for the container
 
 Minimum:
 - 1 CPU
 - 512MB RAM
 
-**Note:** You'll need to deactivate some services like ClamAV to be able to run on a host with 512MB of RAM.
+**Note:** You'll need to deactivate some services like ClamAV to be able to run on a host with 512MB of RAM. Even with 1G RAM you may run into problems without swap, see [FAQ](https://github.com/tomav/docker-mailserver/wiki/FAQ-and-Tips).
 
 ## Usage
 
@@ -60,11 +63,15 @@ Download the docker-compose.yml, the .env and the setup.sh files:
     curl -o docker-compose.yml https://raw.githubusercontent.com/tomav/docker-mailserver/master/docker-compose.yml.dist
 
     curl -o .env https://raw.githubusercontent.com/tomav/docker-mailserver/master/.env.dist
+    
+    curl -o env-mailserver https://raw.githubusercontent.com/tomav/docker-mailserver/master/env-mailserver.dist
 
 #### Create a docker-compose environment
 
-- Edit the `.env` to your liking. Adapt this file with your FQDN.
-  - This file supports only simple `VAR=VAL` lines (see [Documentation](https://docs.docker.com/compose/env-file/)).
+- Edit the files `.env` and `env-mailserver` to your liking:
+  - `.env` contains the configuration for docker-compose
+  - `env-mailserver` contains the configuration for the mailserver container
+  - These files supports only simple `VAR=VAL` lines (see [Documentation](https://docs.docker.com/compose/env-file/)).
   - Don't quote your values.
   - Variable substitution is *not* supported (e.g. `OVERRIDE_HOSTNAME=$HOSTNAME.$DOMAINNAME`).
 - Install [docker-compose](https://docs.docker.com/compose/) in the version `1.7` or higher.
@@ -132,6 +139,7 @@ services:
     volumes:
       - maildata:/var/mail
       - mailstate:/var/mail-state
+      - maillogs:/var/log/mail
       - ./config/:/tmp/docker-mailserver/
     environment:
       - ENABLE_SPAMASSASSIN=1
@@ -148,6 +156,8 @@ volumes:
   maildata:
     driver: local
   mailstate:
+    driver: local
+  maillogs:
     driver: local
 ```
 
@@ -170,6 +180,7 @@ services:
     volumes:
       - maildata:/var/mail
       - mailstate:/var/mail-state
+      - maillogs:/var/log/mail
       - ./config/:/tmp/docker-mailserver/
     environment:
       - ENABLE_SPAMASSASSIN=1
@@ -205,6 +216,8 @@ volumes:
   maildata:
     driver: local
   mailstate:
+    driver: local
+  maillogs:
     driver: local
 ```
 
@@ -346,29 +359,89 @@ Set the message size limit for all users. If set to zero, the size will be unlim
   - drop => Drop the connection immediately with a 521 SMTP reply. Repeat this test the next time the client connects.
   - ignore => Ignore the failure of this test. Allow other tests to complete. Repeat this test the next time the client connects. This option is useful for testing and collecting statistics without blocking mail.
 
+##### DOVECOT_MAILBOX_FORMAT
 
-##### REPORT_RECIPIENT
+  - **maildir** => uses very common Maildir format, one file contains one message
+  - sdbox => (experimental) uses Dovecot high-performance mailbox format, one file contains one message
+  - mdbox ==> (experimental) uses Dovecot high-performance mailbox format, multiple messages per file and multiple files per box
+
+This option has been added in November 2019. Using other format than Maildir is considered as experimental in docker-mailserver and should only be used for testing purpose. For more details, please refer to [Dovecot Documentation](https://wiki2.dovecot.org/MailboxFormat).
+
+## Reports
+
+##### PFLOGSUMM_TRIGGER
+
+  Enables regular pflogsumm mail reports.
+  - **not set** => No report
+  - daily_cron => Daily report for the previous day
+  - logrotate => Full report based on the mail log when it is rotated
+
+This is a new option. The old REPORT options are still supported for backwards compatibility.
+If this is not set and reports are enabled with the old options, logrotate will be used.
+
+##### PFLOGSUMM_RECIPIENT
+
+  Recipient address for pflogsumm reports.
+  - **not set** => Use REPORT_RECIPIENT or POSTMASTER_ADDRESS
+  - => Specify the recipient address(es)
+
+##### PFLOGSUMM_SENDER
+
+  From address for pflogsumm reports.
+  - **not set** => Use REPORT_SENDER or POSTMASTER_ADDRESS
+  - => Specify the sender address
+
+##### LOGWATCH_INTERVAL
+
+  Interval for logwatch report.
+  - **none** => No report is generated
+  - daily => Send a daily report
+  - weekly => Send a report every week
+
+##### LOGWATCH_RECIPIENT
+
+  Recipient address for logwatch reports if they are enabled.
+  - **not set** => Use REPORT_RECIPIENT or POSTMASTER_ADDRESS
+  - => Specify the recipient address(es)
+
+##### REPORT_RECIPIENT (deprecated)
 
   Enables a report being sent (created by pflogsumm) on a regular basis.
-  - **0** => Report emails are disabled
+  - **0** => Report emails are disabled unless enabled by other options
   - 1 => Using POSTMASTER_ADDRESS as the recipient
   - => Specify the recipient address
 
-##### REPORT_SENDER
+##### REPORT_SENDER (deprecated)
 
   Change the sending address for mail report
   - **empty** => mailserver-report@hostname
   - => Specify the report sender (From) address
 
+##### REPORT_INTERVAL (deprecated)
 
-##### REPORT_INTERVAL
-
-  changes the interval in which a report is being sent.
+  changes the interval in which logs are rotated and a report is being sent (deprecated).
   - **daily** => Send a daily report
   - weekly => Send a report every week
   - monthly => Send a report every month
 
-Note: This Variable actually controls logrotate inside the container and rotates the log depending on this setting. The main log output is still available in its entirety via `docker logs mail` (Or your respective container name). If you want to control logrotation for the docker generated logfile see: [Docker Logging Drivers](https://docs.docker.com/config/containers/logging/configure/)
+Note: This variable used to control logrotate inside the container and sent the pflogsumm report when the logs were rotated.
+It is still supported for backwards compatibility, but the new option LOGROTATE_INTERVAL has been added that only rotates
+the logs. 
+
+##### LOGROTATE_INTERVAL 
+
+  Defines the interval in which the mail log is being rotated.
+  - **daily** => Rotate daily.
+  - weekly => Rotate weekly.
+  - monthly => Rotate monthly.
+
+Note that only the log inside the container is affected.
+The full log output is still available via `docker logs mail` (or your respective container name).
+If you want to control logrotation for the docker generated logfile see: [Docker Logging Drivers](https://docs.docker.com/config/containers/logging/configure/).
+
+Also note that by default the logs are lost when the container is recycled. To keep the logs, mount a volume.
+
+Finally the logrotate interval **may** affect the period for generated reports. That is the case when the reports are triggered by log rotation.
 
 ## Spamassassin
 
@@ -589,6 +662,18 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 
 ## SRS (Sender Rewriting Scheme)
 
+##### SRS_SENDER_CLASSES
+
+An email has an "envelope" sender (indicating the sending server) and a
+"header" sender (indicating who sent it). More strict SPF policies may require
+you to replace both instead of just the envelope sender.
+
+[More info](https://www.mybluelinux.com/what-is-email-envelope-and-email-header/).
+
+  - **envelope_sender** => Rewrite only envelope sender address
+  - header_sender => Rewrite only header sender (not recommended)
+  - envelope_sender,header_sender => Rewrite both senders
+
 ##### SRS_EXCLUDE_DOMAINS
 
   - **empty** => Envelope sender will be rewritten for all domains
@@ -612,7 +697,9 @@ Note: This postgrey setting needs `ENABLE_POSTGREY=1`
 #### DEFAULT_RELAY_HOST
 
   - **empty** => don't set default relayhost setting in main.cf
-  - default host and port to relay all mail through
+  - default host and port to relay all mail through.
+    Format: `[example.com]:587` (don't forget the brackets if you need this to
+    be compatible with `$RELAY_USER` and `$RELAY_PASSWORD`, explained below).
 
 ## Multi-domain Relay Hosts
 
