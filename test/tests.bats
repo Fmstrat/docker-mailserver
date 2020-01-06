@@ -27,6 +27,11 @@ function count_processed_changes() {
 # configuration checks
 #
 
+@test "checking configuration: user-patches.sh executed" {
+  run echo -n "`docker logs mail | grep 'user\-patches\.sh'`"
+  assert_output --partial "Default user-patches.sh successfully executed"
+}
+
 @test "checking configuration: hostname/domainname" {
   run docker run `docker inspect --format '{{ .Config.Image }}' mail`
   assert_success
@@ -294,22 +299,19 @@ function count_processed_changes() {
   [ "${lines[2]}" = "added@localhost.localdomain" ]
 }
 
-@test "checking accounts: user mail folders for user1" {
-  run docker exec mail /bin/bash -c "ls -A /var/mail/localhost.localdomain/user1 | grep -E '.Drafts|.Sent|.Trash|cur|new|subscriptions|tmp' | wc -l"
+@test "checking accounts: user mail folder for user1" {
+  run docker exec mail /bin/bash -c "ls -d /var/mail/localhost.localdomain/user1"
   assert_success
-  assert_output 7
 }
 
-@test "checking accounts: user mail folders for user2" {
-  run docker exec mail /bin/bash -c "ls -A /var/mail/otherdomain.tld/user2 | grep -E '.Drafts|.Sent|.Trash|cur|new|subscriptions|tmp' | wc -l"
+@test "checking accounts: user mail folder for user2" {
+  run docker exec mail /bin/bash -c "ls -d /var/mail/otherdomain.tld/user2"
   assert_success
-  assert_output 7
 }
 
-@test "checking accounts: user mail folders for added user" {
-  run docker exec mail /bin/bash -c "ls -A /var/mail/localhost.localdomain/added | grep -E '.Drafts|.Sent|.Trash|cur|new|subscriptions|tmp' | wc -l"
+@test "checking accounts: user mail folder for added user" {
+  run docker exec mail /bin/bash -c "ls -d /var/mail/localhost.localdomain/added"
   assert_success
-  assert_output 7
 }
 
 @test "checking accounts: comments are not parsed" {
@@ -699,13 +701,13 @@ function count_processed_changes() {
 }
 
 @test "checking amavis: VIRUSMAILS_DELETE_DELAY override works as expected" {
-  run docker run -ti --rm -e VIRUSMAILS_DELETE_DELAY=2 `docker inspect --format '{{ .Config.Image }}' mail` /bin/bash -c 'echo $VIRUSMAILS_DELETE_DELAY | grep 2'
+  run docker run --rm -e VIRUSMAILS_DELETE_DELAY=2 `docker inspect --format '{{ .Config.Image }}' mail` /bin/bash -c 'echo $VIRUSMAILS_DELETE_DELAY | grep 2'
   assert_success
 }
 
 @test "checking amavis: old virusmail is wipped by cron" {
   docker exec mail bash -c 'touch -d "`date --date=2000-01-01`" /var/lib/amavis/virusmails/should-be-deleted'
-  run docker exec -ti mail bash -c '/usr/local/bin/virus-wiper'
+  run docker exec mail bash -c '/usr/local/bin/virus-wiper'
   assert_success
   run docker exec mail bash -c 'ls -la /var/lib/amavis/virusmails/ | grep should-be-deleted'
   assert_failure
@@ -713,7 +715,7 @@ function count_processed_changes() {
 
 @test "checking amavis: recent virusmail is not wipped by cron" {
   docker exec mail bash -c 'touch -d "`date`"  /var/lib/amavis/virusmails/should-not-be-deleted'
-  run docker exec -ti mail bash -c '/usr/local/bin/virus-wiper'
+  run docker exec mail bash -c '/usr/local/bin/virus-wiper'
   assert_success
   run docker exec mail bash -c 'ls -la /var/lib/amavis/virusmails/ | grep should-not-be-deleted'
   assert_success
@@ -1084,8 +1086,7 @@ function count_processed_changes() {
 @test "checking setup.sh: setup.sh debug fetchmail" {
   run ./setup.sh -c mail debug fetchmail
   [ "$status" -eq 11 ]
-# TODO: Fix output check
-# [ "$output" = "fetchmail: no mailservers have been specified." ]
+  [[ "$output" == *"fetchmail: normal termination, status 11"* ]]
 }
 @test "checking setup.sh: setup.sh debug inspect" {
   run ./setup.sh -c mail debug inspect
