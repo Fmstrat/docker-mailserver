@@ -25,6 +25,7 @@ DEFAULT_VARS["POSTGREY_AUTO_WHITELIST_CLIENTS"]="${POSTGREY_AUTO_WHITELIST_CLIEN
 DEFAULT_VARS["POSTGREY_TEXT"]="${POSTGREY_TEXT:="Delayed by postgrey"}"
 DEFAULT_VARS["POSTFIX_MESSAGE_SIZE_LIMIT"]="${POSTFIX_MESSAGE_SIZE_LIMIT:="10240000"}"  # ~10 MB by default
 DEFAULT_VARS["POSTFIX_MAILBOX_SIZE_LIMIT"]="${POSTFIX_MAILBOX_SIZE_LIMIT:="0"}"        # no limit by default
+DEFAULT_VARS["POSTFIX_INET_PROTOCOLS"]="${POSTFIX_INET_PROTOCOLS:="all"}"
 DEFAULT_VARS["ENABLE_SASLAUTHD"]="${ENABLE_SASLAUTHD:="0"}"
 DEFAULT_VARS["SMTP_ONLY"]="${SMTP_ONLY:="0"}"
 DEFAULT_VARS["DMS_DEBUG"]="${DMS_DEBUG:="0"}"
@@ -37,6 +38,7 @@ DEFAULT_VARS["SRS_SENDER_CLASSES"]="${SRS_SENDER_CLASSES:="envelope_sender"}"
 DEFAULT_VARS["REPORT_RECIPIENT"]="${REPORT_RECIPIENT:="0"}"
 DEFAULT_VARS["LOGROTATE_INTERVAL"]="${LOGROTATE_INTERVAL:=${REPORT_INTERVAL:-"daily"}}"
 DEFAULT_VARS["LOGWATCH_INTERVAL"]="${LOGWATCH_INTERVAL:="none"}"
+DEFAULT_VARS["SPAMASSASSIN_SPAM_TO_INBOX"]="${SPAMASSASSIN_SPAM_TO_INBOX:="0"}"
 DEFAULT_VARS["VIRUSMAILS_DELETE_DELAY"]="${VIRUSMAILS_DELETE_DELAY:="7"}"
 
 ##########################################################################
@@ -118,6 +120,9 @@ function register_functions() {
 
 	_register_setup_function "_setup_dkim"
 	_register_setup_function "_setup_ssl"
+	if [ "$POSTFIX_INET_PROTOCOLS" != "all" ]; then
+    _register_setup_function "_setup_inet_protocols"
+  fi
 	_register_setup_function "_setup_docker_permit"
 
 	_register_setup_function "_setup_mailname"
@@ -175,7 +180,7 @@ function register_functions() {
 	if [ "$LOGWATCH_TRIGGER" != "none" ]; then
 		_register_setup_function "_setup_logwatch"
 	fi
-	
+
 	_register_setup_function "_setup_user_patches"
 
         # Compute last as the config files are modified in-place
@@ -1100,6 +1105,11 @@ function _setup_postfix_vhost() {
 	fi
 }
 
+function _setup_inet_protocols() {
+  notify 'task' 'Setting up POSTFIX_INET_PROTOCOLS option'
+  postconf -e "inet_protocols = $POSTFIX_INET_PROTOCOLS"
+}
+
 function _setup_docker_permit() {
 	notify 'task' 'Setting up PERMIT_DOCKER Option'
 
@@ -1402,6 +1412,23 @@ function _setup_security_stack() {
         fi
 
 		test -e /tmp/docker-mailserver/spamassassin-rules.cf && cp /tmp/docker-mailserver/spamassassin-rules.cf /etc/spamassassin/
+		
+		
+		if [ "$SPAMASSASSIN_SPAM_TO_INBOX" = "1" ]; then
+				notify 'inf' "Configure Spamassassin/Amavis to put SPAM inbox"
+				bannedbouncecheck=`egrep "final_banned_destiny.*D_BOUNCE" /etc/amavis/conf.d/20-debian_defaults`
+				  if [ -n "$bannedbouncecheck" ] ;
+						  then
+									   sed -i "/final_banned_destiny/ s|D_BOUNCE|D_REJECT|" /etc/amavis/conf.d/20-debian_defaults
+							fi
+							
+				finalbouncecheck=`egrep "final_spam_destiny.*D_BOUNCE" /etc/amavis/conf.d/20-debian_defaults`
+				  if [ -n "$finalbouncecheck" ] ;
+						  then
+									   sed -i "/final_spam_destiny/ s|D_BOUNCE|D_PASS|" /etc/amavis/conf.d/20-debian_defaults
+							fi
+		fi
+
 	fi
 
 	# Clamav
