@@ -25,6 +25,7 @@ DEFAULT_VARS["POSTGREY_AUTO_WHITELIST_CLIENTS"]="${POSTGREY_AUTO_WHITELIST_CLIEN
 DEFAULT_VARS["POSTGREY_TEXT"]="${POSTGREY_TEXT:="Delayed by postgrey"}"
 DEFAULT_VARS["POSTFIX_MESSAGE_SIZE_LIMIT"]="${POSTFIX_MESSAGE_SIZE_LIMIT:="10240000"}"  # ~10 MB by default
 DEFAULT_VARS["POSTFIX_MAILBOX_SIZE_LIMIT"]="${POSTFIX_MAILBOX_SIZE_LIMIT:="0"}"        # no limit by default
+DEFAULT_VARS["POSTFIX_INET_PROTOCOLS"]="${POSTFIX_INET_PROTOCOLS:="all"}"
 DEFAULT_VARS["ENABLE_SASLAUTHD"]="${ENABLE_SASLAUTHD:="0"}"
 DEFAULT_VARS["SMTP_ONLY"]="${SMTP_ONLY:="0"}"
 DEFAULT_VARS["DMS_DEBUG"]="${DMS_DEBUG:="0"}"
@@ -37,6 +38,7 @@ DEFAULT_VARS["SRS_SENDER_CLASSES"]="${SRS_SENDER_CLASSES:="envelope_sender"}"
 DEFAULT_VARS["REPORT_RECIPIENT"]="${REPORT_RECIPIENT:="0"}"
 DEFAULT_VARS["LOGROTATE_INTERVAL"]="${LOGROTATE_INTERVAL:=${REPORT_INTERVAL:-"daily"}}"
 DEFAULT_VARS["LOGWATCH_INTERVAL"]="${LOGWATCH_INTERVAL:="none"}"
+DEFAULT_VARS["SPAMASSASSIN_SPAM_TO_INBOX"]="${SPAMASSASSIN_SPAM_TO_INBOX:="0"}"
 DEFAULT_VARS["VIRUSMAILS_DELETE_DELAY"]="${VIRUSMAILS_DELETE_DELAY:="7"}"
 
 ##########################################################################
@@ -118,6 +120,9 @@ function register_functions() {
 
 	_register_setup_function "_setup_dkim"
 	_register_setup_function "_setup_ssl"
+	if [ "$POSTFIX_INET_PROTOCOLS" != "all" ]; then
+    _register_setup_function "_setup_inet_protocols"
+  fi
 	_register_setup_function "_setup_docker_permit"
 
 	_register_setup_function "_setup_mailname"
@@ -175,7 +180,7 @@ function register_functions() {
 	if [ "$LOGWATCH_TRIGGER" != "none" ]; then
 		_register_setup_function "_setup_logwatch"
 	fi
-	
+
 	_register_setup_function "_setup_user_patches"
 
         # Compute last as the config files are modified in-place
@@ -625,11 +630,12 @@ function _setup_dovecot() {
 		sed -i "s/#sieve_after =/sieve_after =/" /etc/dovecot/conf.d/90-sieve.conf
 		cp /tmp/docker-mailserver/after.dovecot.sieve /usr/lib/dovecot/sieve-global/
 		sievec /usr/lib/dovecot/sieve-global/after.dovecot.sieve
-	else 
-		sed -i "s/  sieve_after =/  #sieve_after =/" /etc/dovecot/conf.d/90-sieve.conf	
+	else
+		sed -i "s/  sieve_after =/  #sieve_after =/" /etc/dovecot/conf.d/90-sieve.conf
 	fi
 	chown docker:docker -R /usr/lib/dovecot/sieve*
 	chmod 550 -R /usr/lib/dovecot/sieve*
+	chmod -f +x /usr/lib/dovecot/sieve-pipe/*
 }
 
 function _setup_dovecot_local_user() {
@@ -1099,6 +1105,11 @@ function _setup_postfix_vhost() {
 	fi
 }
 
+function _setup_inet_protocols() {
+  notify 'task' 'Setting up POSTFIX_INET_PROTOCOLS option'
+  postconf -e "inet_protocols = $POSTFIX_INET_PROTOCOLS"
+}
+
 function _setup_docker_permit() {
 	notify 'task' 'Setting up PERMIT_DOCKER Option'
 
@@ -1390,7 +1401,38 @@ function _setup_security_stack() {
 		else
 			sed -i -r 's/^\$sa_spam_subject_tag (.*);/\$sa_spam_subject_tag = '"'$SA_SPAM_SUBJECT'"';/g' /etc/amavis/conf.d/20-debian_defaults
 		fi
+
+        # activate short circuits when SA BAYES is certain it has spam or ham.
+        if [ "$SA_SHORTCIRCUIT_BAYES_SPAM" = 1 ]; then
+			# automatically activate the Shortcircuit Plugin
+			sed -i -r 's/^# loadplugin Mail::SpamAssassin::Plugin::Shortcircuit/loadplugin Mail::SpamAssassin::Plugin::Shortcircuit/g' /etc/spamassassin/v320.pre
+            sed -i -r 's/^# shortcircuit BAYES_99/shortcircuit BAYES_99/g' /etc/spamassassin/local.cf
+        fi
+
+        if [ "$SA_SHORTCIRCUIT_BAYES_HAM" = 1 ]; then
+			# automatically activate the Shortcircuit Plugin
+			sed -i -r 's/^# loadplugin Mail::SpamAssassin::Plugin::Shortcircuit/loadplugin Mail::SpamAssassin::Plugin::Shortcircuit/g' /etc/spamassassin/v320.pre
+            sed -i -r 's/^# shortcircuit BAYES_00/shortcircuit BAYES_00/g' /etc/spamassassin/local.cf
+        fi
+
 		test -e /tmp/docker-mailserver/spamassassin-rules.cf && cp /tmp/docker-mailserver/spamassassin-rules.cf /etc/spamassassin/
+		
+		
+		if [ "$SPAMASSASSIN_SPAM_TO_INBOX" = "1" ]; then
+				notify 'inf' "Configure Spamassassin/Amavis to put SPAM inbox"
+				bannedbouncecheck=`egrep "final_banned_destiny.*D_BOUNCE" /etc/amavis/conf.d/20-debian_defaults`
+				  if [ -n "$bannedbouncecheck" ] ;
+						  then
+									   sed -i "/final_banned_destiny/ s|D_BOUNCE|D_REJECT|" /etc/amavis/conf.d/20-debian_defaults
+							fi
+							
+				finalbouncecheck=`egrep "final_spam_destiny.*D_BOUNCE" /etc/amavis/conf.d/20-debian_defaults`
+				  if [ -n "$finalbouncecheck" ] ;
+						  then
+									   sed -i "/final_spam_destiny/ s|D_BOUNCE|D_PASS|" /etc/amavis/conf.d/20-debian_defaults
+							fi
+		fi
+
 	fi
 
 	# Clamav
@@ -1477,6 +1519,7 @@ function _setup_mail_summary() {
 
 function _setup_logwatch() {
 	notify 'inf' "Enable logwatch reports with recipient $LOGWATCH_RECIPIENT"
+  echo "LogFile = /var/log/mail/freshclam.log" >> /etc/logwatch/conf/logfiles/clam-update.conf
 	case "$LOGWATCH_INTERVAL" in
 		"daily" )
 			notify 'inf' "Creating daily cron job for logwatch reports"

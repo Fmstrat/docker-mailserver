@@ -7,6 +7,19 @@ A fullstack but simple mail server (smtp, imap, antispam, antivirus...).
 Only configuration files, no SQL database. Keep it simple and versioned.
 Easy to deploy and upgrade.
 
+## ANNOUNCEMENT
+
+Some time VERY SOON we will merge the next branch based on Debian Buster to master.
+That means the docker image latest will change. The change may break things!
+
+The following possibly breaking changes are known:
+- Filebeat is removed and should be handled by another container, see [Wiki](https://github.com/tomav/docker-mailserver/wiki/).
+- Dovecot will be downgraded a little bit (same major version) so that we can use the official Debian version.
+
+If you want to stick to the old version a while longer, either switch to stable or to a specific version.
+If you run into problems, please raise issues and ask for help. Don't forget to provide details.
+
+
 Includes:
 
 - [Postfix](http://www.postfix.org) with smtp or ldap auth
@@ -63,7 +76,7 @@ Download the docker-compose.yml, the .env and the setup.sh files:
     curl -o docker-compose.yml https://raw.githubusercontent.com/tomav/docker-mailserver/master/docker-compose.yml.dist
 
     curl -o .env https://raw.githubusercontent.com/tomav/docker-mailserver/master/.env.dist
-    
+
     curl -o env-mailserver https://raw.githubusercontent.com/tomav/docker-mailserver/master/env-mailserver.dist
 
 #### Create a docker-compose environment
@@ -75,6 +88,8 @@ Download the docker-compose.yml, the .env and the setup.sh files:
   - Don't quote your values.
   - Variable substitution is *not* supported (e.g. `OVERRIDE_HOSTNAME=$HOSTNAME.$DOMAINNAME`).
 - Install [docker-compose](https://docs.docker.com/compose/) in the version `1.7` or higher.
+
+**Note:** If you want to use a bare domain (host name equals domain name) see [FAQ](https://github.com/tomav/docker-mailserver/wiki/FAQ-and-Tips#can-i-use-nakedbare-domains-no-host-name).
 
 #### Start Container
     docker-compose up -d mail
@@ -296,11 +311,13 @@ Enables the Sender Rewriting Scheme. SRS is needed if your mail server acts as f
 
 ##### PERMIT_DOCKER
 
-Set different options for mynetworks option (can be overwrite in postfix-main.cf)
+Set different options for mynetworks option (can be overwrite in postfix-main.cf) **WARNING**: Adding the docker network's gateway to the list of trusted hosts, e.g. using the `network` or `connected-networks` option, can create an [**open relay**](https://en.wikipedia.org/wiki/Open_mail_relay), [for instance](https://github.com/tomav/docker-mailserver/issues/1405#issuecomment-590106498) if IPv6 is enabled on the host machine but not in Docker.
   - **empty** => localhost only
   - host => Add docker host (ipv4 only)
   - network => Add the docker default bridge network (172.16.0.0/12); **WARNING**: `docker-compose` might use others (e.g. 192.168.0.0/16) use `PERMIT_DOCKER=connected-networks` in this case
   - connected-networks => Add all connected docker networks (ipv4 only)
+
+Note: you probably want to [set `POSTFIX_INET_PROTOCOLS=ipv4`](#postfix_inet_protocols) to make it work fine with Docker.
 
 ##### VIRUSMAILS_DELETE_DELAY
 
@@ -367,6 +384,14 @@ Set the message size limit for all users. If set to zero, the size will be unlim
 
 This option has been added in November 2019. Using other format than Maildir is considered as experimental in docker-mailserver and should only be used for testing purpose. For more details, please refer to [Dovecot Documentation](https://wiki2.dovecot.org/MailboxFormat).
 
+##### POSTFIX_INET_PROTOCOLS
+
+- **all** => All possible protocols.
+- ipv4 => Use only IPv4 traffic. Most likely you want this behind Docker.
+- ipv6 => Use only IPv6 traffic.
+
+Note: More details in http://www.postfix.org/postconf.5.html#inet_protocols
+
 ## Reports
 
 ##### PFLOGSUMM_TRIGGER
@@ -426,9 +451,9 @@ If this is not set and reports are enabled with the old options, logrotate will 
 
 Note: This variable used to control logrotate inside the container and sent the pflogsumm report when the logs were rotated.
 It is still supported for backwards compatibility, but the new option LOGROTATE_INTERVAL has been added that only rotates
-the logs. 
+the logs.
 
-##### LOGROTATE_INTERVAL 
+##### LOGROTATE_INTERVAL
 
   Defines the interval in which the mail log is being rotated.
   - **daily** => Rotate daily.
@@ -473,6 +498,22 @@ Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`. By default, the m
   - **\*\*\*SPAM\*\*\*** => add tag to subject if spam detected
 
 Note: this spamassassin setting needs `ENABLE_SPAMASSASSIN=1`
+
+##### SA_SHORTCIRCUIT_BAYES_SPAM
+
+  - **1** => will activate spamassassin short circuiting for bayes spam detection.
+
+This will uncomment the respective line in ```/etc/spamassasin/local.cf```
+
+Note: activate this only if you are confident in your bayes database for identifying spam.
+
+##### SA_SHORTCIRCUIT_BAYES_HAM
+
+  - **1** => will activate spamassassin short circuiting for bayes ham detection
+
+This will uncomment the respective line in ```/etc/spamassasin/local.cf```
+
+Note: activate this only if you are confident in your bayes database for identifying ham.
 
 ## Fetchmail
 
