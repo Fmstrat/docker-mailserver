@@ -1,4 +1,4 @@
-FROM debian:stretch-slim
+FROM debian:buster-slim
 
 ARG VCS_REF
 ARG VCS_VERSION
@@ -28,12 +28,13 @@ ENV SASLAUTHD_MECH_OPTIONS=""
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Packages
-# hadolint ignore=DL3015
-RUN echo "deb http://http.debian.net/debian stretch-backports main" | tee -a /etc/apt/sources.list.d/stretch-bp.list && \
+# hadolint ignore=DL3015,DL3005
+RUN \
   apt-get update -q --fix-missing && \
+  apt-get -y upgrade && \
   apt-get -y install postfix && \
-  # TODO installing postfix with --no-install-recommends makes "checking ssl: generated default cert works correctly" fail
   apt-get -y install --no-install-recommends \
+    altermime \
     amavisd-new \
     apt-transport-https \
     arj \
@@ -56,6 +57,7 @@ RUN echo "deb http://http.debian.net/debian stretch-backports main" | tee -a /et
     iptables \
     locales \
     logwatch \
+    lhasa \
     libdate-manip-perl \
     liblz4-tool \
     libmail-spf-perl \
@@ -78,7 +80,6 @@ RUN echo "deb http://http.debian.net/debian stretch-backports main" | tee -a /et
     postsrsd \
     pyzor \
     razor \
-    ripole \
     rpm2cpio \
     rsyslog \
     sasl2-bin \
@@ -89,14 +90,12 @@ RUN echo "deb http://http.debian.net/debian stretch-backports main" | tee -a /et
     unzip \
     whois \
     xz-utils \
-    zoo \
-    && \
   # use Dovecot community repo to react faster on security updates
-  curl https://repo.dovecot.org/DOVECOT-REPO-GPG | gpg --import && \
-  gpg --export ED409DA1 > /etc/apt/trusted.gpg.d/dovecot.gpg && \
-  echo "deb https://repo.dovecot.org/ce-2.3-latest/debian/stretch stretch main" > /etc/apt/sources.list.d/dovecot-community.list && \
-  apt-get update -q --fix-missing && \
-  apt-get -y install --no-install-recommends \
+  #curl https://repo.dovecot.org/DOVECOT-REPO-GPG | gpg --import && \
+  #gpg --export ED409DA1 > /etc/apt/trusted.gpg.d/dovecot.gpg && \
+  #echo "deb https://repo.dovecot.org/ce-2.3-latest/debian/stretch stretch main" > /etc/apt/sources.list.d/dovecot-community.list && \
+  #apt-get update -q --fix-missing && \
+  #apt-get -y install --no-install-recommends \
     dovecot-core \
     dovecot-imapd \
     dovecot-ldap \
@@ -114,32 +113,20 @@ RUN echo "deb http://http.debian.net/debian stretch-backports main" | tee -a /et
   rm -rf /usr/share/doc/* && \
   touch /var/log/auth.log && \
   update-locale && \
-  rm -f /etc/cron.weekly/fstrim && \
-  rm -f /etc/postsrsd.secret && \
-  rm -f /etc/cron.daily/00logwatch
-
-# install filebeat for logging
-RUN curl https://packages.elasticsearch.org/GPG-KEY-elasticsearch | apt-key add - && \
-  echo "deb http://packages.elastic.co/beats/apt stable main" | tee -a /etc/apt/sources.list.d/beats.list && \
-  apt-get update -q --fix-missing && \
-  apt-get -y install --no-install-recommends \
-    filebeat \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/*
-
-COPY target/filebeat.yml.tmpl /etc/filebeat/filebeat.yml.tmpl
+  rm /etc/postsrsd.secret && \
+  rm /etc/cron.daily/00logwatch
 
 RUN echo "0 */6 * * * clamav /usr/bin/freshclam --quiet" > /etc/cron.d/clamav-freshclam && \
   chmod 644 /etc/clamav/freshclam.conf && \
   freshclam && \
   sed -i 's/Foreground false/Foreground true/g' /etc/clamav/clamd.conf && \
-  sed -i 's/AllowSupplementaryGroups false/AllowSupplementaryGroups true/g' /etc/clamav/clamd.conf && \
   mkdir /var/run/clamav && \
   chown -R clamav:root /var/run/clamav && \
   rm -rf /var/log/clamav/
 
 # Configures Dovecot
 COPY target/dovecot/auth-passwdfile.inc target/dovecot/??-*.conf /etc/dovecot/conf.d/
+COPY target/dovecot/scripts/quota-warning.sh /usr/local/bin/quota-warning.sh
 WORKDIR /usr/share/dovecot
 # hadolint ignore=SC2016,SC2086
 RUN sed -i -e 's/include_try \/usr\/share\/dovecot\/protocols\.d/include_try \/etc\/dovecot\/protocols\.d/g' /etc/dovecot/dovecot.conf && \
@@ -178,6 +165,9 @@ RUN chmod 755 /etc/init.d/postgrey && \
 # Copy PostSRSd Config
 COPY target/postsrsd/postsrsd /etc/default/postsrsd
 
+# Copy shared ffdhe params
+COPY target/shared/ffdhe4096.pem /etc/postfix/shared/ffdhe4096.pem
+
 # Enables Amavis
 COPY target/amavis/conf.d/* /etc/amavis/conf.d/
 RUN sed -i -r 's/#(@|   \\%)bypass/\1bypass/g' /etc/amavis/conf.d/15-content_filter_mode && \
@@ -190,8 +180,8 @@ RUN sed -i -r 's/#(@|   \\%)bypass/\1bypass/g' /etc/amavis/conf.d/15-content_fil
 
 # Configure Fail2ban
 COPY target/fail2ban/jail.conf /etc/fail2ban/jail.conf
-COPY target/fail2ban/filter.d/dovecot.conf /etc/fail2ban/filter.d/dovecot.conf
-RUN echo "ignoreregex =" >> /etc/fail2ban/filter.d/postfix-sasl.conf && mkdir /var/run/fail2ban
+COPY target/fail2ban/filter.d/postfix-sasl.conf /etc/fail2ban/filter.d/postfix-sasl.conf
+RUN mkdir /var/run/fail2ban
 
 # Enables Pyzor and Razor
 RUN su - amavis -c "razor-admin -create && \
@@ -230,14 +220,16 @@ RUN sed -i -r "/^#?compress/c\compress\ncopytruncate" /etc/logrotate.conf && \
   sed -i -r 's|LogFile /var/log/clamav/|LogFile /var/log/mail/|g' /etc/clamav/clamd.conf && \
   sed -i -r 's|UpdateLogFile /var/log/clamav/|UpdateLogFile /var/log/mail/|g' /etc/clamav/freshclam.conf && \
   sed -i -r 's|/var/log/clamav|/var/log/mail|g' /etc/logrotate.d/clamav-daemon && \
+  sed -i -r 's|invoke-rc.d.*|/usr/bin/supervisorctl signal hup clamav >/dev/null \|\| true|g' /etc/logrotate.d/clamav-daemon && \
   sed -i -r 's|/var/log/clamav|/var/log/mail|g' /etc/logrotate.d/clamav-freshclam && \
+  sed -i -r 's|invoke-rc.d|#invoke-rc.d|g' /etc/logrotate.d/clamav-freshclam && \
   sed -i -r 's|/var/log/mail|/var/log/mail/mail|g' /etc/logrotate.d/rsyslog && \
   sed -i -r '/\/var\/log\/mail\/mail.log/d' /etc/logrotate.d/rsyslog && \
   # prevent syslog logrotate warnings \
   sed -i -e 's/\(printerror "could not determine current runlevel"\)/#\1/' /usr/sbin/invoke-rc.d && \
   sed -i -e 's/^\(POLICYHELPER=\).*/\1/' /usr/sbin/invoke-rc.d && \
   # prevent email when /sbin/init or init system is not existing \
-  sed -i -e 's/invoke-rc.d rsyslog rotate > \/dev\/null/invoke-rc.d rsyslog --quiet rotate > \/dev\/null/g' /etc/logrotate.d/rsyslog
+  sed -i -e 's|invoke-rc.d rsyslog rotate > /dev/null|/usr/bin/supervisorctl signal hup rsyslog >/dev/null|g' /usr/lib/rsyslog/rsyslog-rotate
 
 # Get LetsEncrypt signed certificate
 RUN curl -s https://letsencrypt.org/certs/lets-encrypt-x3-cross-signed.pem > /etc/ssl/certs/lets-encrypt-x3-cross-signed.pem
@@ -252,6 +244,11 @@ COPY target/supervisor/supervisord.conf /etc/supervisor/supervisord.conf
 COPY target/supervisor/conf.d/* /etc/supervisor/conf.d/
 
 WORKDIR /
+
+# Switch iptables and ip6tables to legacy for fail2ban
+RUN update-alternatives --set iptables /usr/sbin/iptables-legacy \
+ && update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+
 
 EXPOSE 25 587 143 465 993 110 995 4190
 

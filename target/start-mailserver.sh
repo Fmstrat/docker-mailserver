@@ -96,13 +96,10 @@ function register_functions() {
 	_register_setup_function "_setup_default_vars"
 	_register_setup_function "_setup_file_permissions"
 
-	if [ "$ENABLE_ELK_FORWARDER" = 1 ]; then
-		_register_setup_function "_setup_elk_forwarder"
-	fi
-
 	if [ "$SMTP_ONLY" != 1 ]; then
 		_register_setup_function "_setup_dovecot"
                 _register_setup_function "_setup_dovecot_dhparam"
+		_register_setup_function "_setup_dovecot_quota"
 		_register_setup_function "_setup_dovecot_local_user"
 	fi
 
@@ -211,10 +208,6 @@ function register_functions() {
 
 	_register_start_daemon "_start_daemons_cron"
 	_register_start_daemon "_start_daemons_rsyslog"
-
-	if [ "$ENABLE_ELK_FORWARDER" = 1 ]; then
-		_register_start_daemon "_start_daemons_filebeat"
-	fi
 
 	if [ "$SMTP_ONLY" != 1 ]; then
 		_register_start_daemon "_start_daemons_dovecot"
@@ -509,7 +502,7 @@ function _setup_chksum_file() {
           pushd /tmp/docker-mailserver
 
           declare -a cf_files=()
-          for file in postfix-accounts.cf postfix-virtual.cf postfix-aliases.cf; do
+          for file in postfix-accounts.cf postfix-virtual.cf postfix-aliases.cf dovecot-quotas.cf; do
             [ -f "$file" ] && cf_files+=("$file")
           done
 
@@ -638,6 +631,44 @@ function _setup_dovecot() {
 	chmod -f +x /usr/lib/dovecot/sieve-pipe/*
 }
 
+function _setup_dovecot_quota() {
+    notify 'task' 'Setting up Dovecot quota'
+
+    if [ "$ENABLE_LDAP" = 1 ] || [ "$SMTP_ONLY" = 1 ]; then
+      # Dovecot quota is disabled when using LDAP or SMTP_ONLY
+
+      # disable dovecot quota in docevot confs
+      if [ -f /etc/dovecot/conf.d/90-quota.conf ]; then
+        mv /etc/dovecot/conf.d/90-quota.conf /etc/dovecot/conf.d/90-quota.conf.disab
+        sed -i "s/mail_plugins = \$mail_plugins quota/mail_plugins = \$mail_plugins/g" /etc/dovecot/conf.d/10-mail.conf
+        sed -i "s/mail_plugins = \$mail_plugins imap_quota/mail_plugins = \$mail_plugins/g" /etc/dovecot/conf.d/20-imap.conf
+      fi
+
+      # disable quota policy check in postfix
+      sed -i "s/check_policy_service inet:localhost:65265//g" /etc/postfix/main.cf
+    else
+      if [ -f /etc/dovecot/conf.d/90-quota.conf.disab ]; then
+        mv /etc/dovecot/conf.d/90-quota.conf.disab /etc/dovecot/conf.d/90-quota.conf
+        sed -i "s/mail_plugins = \$mail_plugins/mail_plugins = \$mail_plugins quota/g" /etc/dovecot/conf.d/10-mail.conf
+        sed -i "s/mail_plugins = \$mail_plugin/mail_plugins = \$mail_plugins imap_quota/g" /etc/dovecot/conf.d/20-imap.conf
+      fi
+
+      message_size_limit_mb=$((DEFAULT_VARS["POSTFIX_MESSAGE_SIZE_LIMIT"] / 1000000))
+      mailbox_limit_mb=$((DEFAULT_VARS["POSTFIX_MAILBOX_SIZE_LIMIT"] / 1000000))
+
+      sed -i "s/quota_max_mail_size =.*/quota_max_mail_size = ${message_size_limit_mb}$([ "$message_size_limit_mb" == 0 ] && echo "" || echo "M")/g" /etc/dovecot/conf.d/90-quota.conf
+      sed -i "s/quota_rule = \*:storage=.*/quota_rule = *:storage=${mailbox_limit_mb}$([ "$mailbox_limit_mb" == 0 ] && echo "" || echo "M")/g" /etc/dovecot/conf.d/90-quota.conf
+
+      if [ ! -f /tmp/docker-mailserver/dovecot-quotas.cf ]; then
+        notify 'inf' "'config/docker-mailserver/dovecot-quotas.cf' is not provided. Using default quotas."
+		    echo -n >/tmp/docker-mailserver/dovecot-quotas.cf
+      fi
+
+      # enable quota policy check in postfix
+      sed -i "s/reject_unknown_recipient_domain, reject_rbl_client zen.spamhaus.org/reject_unknown_recipient_domain, check_policy_service inet:localhost:65265, reject_rbl_client zen.spamhaus.org/g" /etc/postfix/main.cf
+    fi
+}
+
 function _setup_dovecot_local_user() {
 	notify 'task' 'Setting up Dovecot Local User'
 	echo -n > /etc/postfix/vmailbox
@@ -665,15 +696,28 @@ function _setup_dovecot_local_user() {
 			# Setting variables for better readability
 			user=$(echo ${login} | cut -d @ -f1)
 			domain=$(echo ${login} | cut -d @ -f2)
+
+			user_attributes=""
+			# test if user has a defined quota
+      if [ -f /tmp/docker-mailserver/dovecot-quotas.cf ]; then
+			  user_quota=($(grep "${user}@${domain}:" -i /tmp/docker-mailserver/dovecot-quotas.cf | tr ':' '\n'))
+
+			  if [ ${#user_quota[@]} -eq 2 ]; then
+			    user_attributes="${user_attributes}userdb_quota_rule=*:bytes=${user_quota[1]}"
+			  fi
+			fi
+
 			# Let's go!
-			notify 'inf' "user '${user}' for domain '${domain}' with password '********'"
+			notify 'inf' "user '${user}' for domain '${domain}' with password '********', attr=${user_attributes}"
+
 			echo "${login} ${domain}/${user}/" >> /etc/postfix/vmailbox
 			# User database for dovecot has the following format:
 			# user:password:uid:gid:(gecos):home:(shell):extra_fields
 			# Example :
 			# ${login}:${pass}:5000:5000::/var/mail/${domain}/${user}::userdb_mail=maildir:/var/mail/${domain}/${user}
-			echo "${login}:${pass}:5000:5000::/var/mail/${domain}/${user}::" >> /etc/dovecot/userdb
+			echo "${login}:${pass}:5000:5000::/var/mail/${domain}/${user}::${user_attributes}" >> /etc/dovecot/userdb
 			mkdir -p /var/mail/${domain}/${user}
+
 			# Copy user provided sieve file, if present
 			test -e /tmp/docker-mailserver/${login}.dovecot.sieve && cp /tmp/docker-mailserver/${login}.dovecot.sieve /var/mail/${domain}/${user}/.dovecot.sieve
 			echo ${domain} >> /tmp/vhost.tmp
@@ -783,6 +827,8 @@ function _setup_postfix_sizelimits() {
 	postconf -e "message_size_limit = ${DEFAULT_VARS["POSTFIX_MESSAGE_SIZE_LIMIT"]}"
 	notify 'inf' "Configuring postfix mailbox size limit"
 	postconf -e "mailbox_size_limit = ${DEFAULT_VARS["POSTFIX_MAILBOX_SIZE_LIMIT"]}"
+	notify 'inf' "Configuring postfix virtual mailbox size limit"
+	postconf -e "virtual_mailbox_limit = ${DEFAULT_VARS["POSTFIX_MAILBOX_SIZE_LIMIT"]}"
 }
 
 function _setup_postfix_smtputf8() {
@@ -1319,15 +1365,16 @@ function _setup_postfix_dhparam() {
 	if [ "$ONE_DIR" = 1 ];then
 		DHPARAMS_FILE=/var/mail-state/lib-shared/dhparams.pem
 		if [ ! -f $DHPARAMS_FILE ]; then
-			notify 'inf' "Generate new shared dhparams (postfix)"
-			mkdir -p $(dirname "$DHPARAMS_FILE")
-			openssl dhparam -out $DHPARAMS_FILE 2048
+			notify 'inf' "Use ffdhe4096 for dhparams (postfix)"
+      rm -f /etc/postfix/dhparams.pem && cp /etc/postfix/shared/ffdhe4096.pem /etc/postfix/dhparams.pem
 		else
 			notify 'inf' "Use postfix dhparams that was generated previously"
-		fi
+      notify 'warn' "Using self-generated dhparams is considered as insecure."
+      notify 'warn' "Unless you known what you are doing, please remove /var/mail-state/lib-shared/dhparams.pem."
 
-		# Copy from the state directory to the working location
-		rm -f /etc/postfix/dhparams.pem && cp $DHPARAMS_FILE /etc/postfix/dhparams.pem
+      # Copy from the state directory to the working location
+      rm -f /etc/postfix/dhparams.pem && cp $DHPARAMS_FILE /etc/postfix/dhparams.pem
+		fi
 	else
                 if [ ! -f /etc/postfix/dhparams.pem ]; then
                         if [ -f /etc/dovecot/dh.pem ]; then
@@ -1335,13 +1382,17 @@ function _setup_postfix_dhparam() {
                                 cp /etc/dovecot/dh.pem /etc/postfix/dhparams.pem
                         elif [ -f /tmp/docker-mailserver/dhparams.pem ]; then
                                 notify 'inf' "Copy pre-generated dhparams to postfix"
+                                notify 'warn' "Using self-generated dhparams is considered as insecure."
+                                notify 'warn' "Unless you known what you are doing, please remove /var/mail-state/lib-shared/dhparams.pem."
                                 cp /tmp/docker-mailserver/dhparams.pem /etc/postfix/dhparams.pem
                         else
-                                notify 'inf' "Generate new dhparams for postfix"
-                                openssl dhparam -out /etc/postfix/dhparams.pem 2048
+			                          notify 'inf' "Use ffdhe4096 for dhparams (postfix)"
+                                cp /etc/postfix/shared/ffdhe4096.pem /etc/postfix/dhparams.pem
                         fi
                 else
                         notify 'inf' "Use existing postfix dhparams"
+                        notify 'warn' "Using self-generated dhparams is considered as insecure."
+                        notify 'warn' "Unless you known what you are doing, please remove /etc/postfix/dhparams.pem."
                 fi
 	fi
 }
@@ -1351,15 +1402,16 @@ function _setup_dovecot_dhparam() {
         if [ "$ONE_DIR" = 1 ];then
                 DHPARAMS_FILE=/var/mail-state/lib-shared/dhparams.pem
                 if [ ! -f $DHPARAMS_FILE ]; then
-                        notify 'inf' "Generate new shared dhparams (dovecot)"
-                        mkdir -p $(dirname "$DHPARAMS_FILE")
-                        openssl dhparam -out $DHPARAMS_FILE 2048
+                        notify 'inf' "Use ffdhe4096 for dhparams (dovecot)"
+                        rm -f /etc/dovecot/dh.pem && cp /etc/postfix/shared/ffdhe4096.pem /etc/dovecot/dh.pem
                 else
                         notify 'inf' "Use dovecot dhparams that was generated previously"
-                fi
+                        notify 'warn' "Using self-generated dhparams is considered as insecure."
+                        notify 'warn' "Unless you known what you are doing, please remove /var/mail-state/lib-shared/dhparams.pem."
 
-                # Copy from the state directory to the working location
-                rm -f /etc/dovecot/dh.pem && cp $DHPARAMS_FILE /etc/dovecot/dh.pem
+                        # Copy from the state directory to the working location
+                        rm -f /etc/dovecot/dh.pem && cp $DHPARAMS_FILE /etc/dovecot/dh.pem
+                fi
         else
                 if [ ! -f /etc/dovecot/dh.pem ]; then
                         if [ -f /etc/postfix/dhparams.pem ]; then
@@ -1367,13 +1419,17 @@ function _setup_dovecot_dhparam() {
                                 cp /etc/postfix/dhparams.pem /etc/dovecot/dh.pem
                         elif [ -f /tmp/docker-mailserver/dhparams.pem ]; then
                                 notify 'inf' "Copy pre-generated dhparams to dovecot"
+                                notify 'warn' "Using self-generated dhparams is considered as insecure."
+                                notify 'warn' "Unless you known what you are doing, please remove /tmp/docker-mailserver/dhparams.pem."
                                 cp /tmp/docker-mailserver/dhparams.pem /etc/dovecot/dh.pem
                         else
-                                notify 'inf' "Generate new dhparams for dovecot"
-                                openssl dhparam -out /etc/dovecot/dh.pem 2048
+			                          notify 'inf' "Use ffdhe4096 for dhparams (dovecot)"
+                                cp /etc/postfix/shared/ffdhe4096.pem /etc/dovecot/dh.pem
                         fi
                 else
                         notify 'inf' "Use existing dovecot dhparams"
+                        notify 'warn' "Using self-generated dhparams is considered as insecure."
+                        notify 'warn' "Unless you known what you are doing, please remove /etc/dovecot/dh.pem."
                 fi
         fi
 }
@@ -1402,18 +1458,22 @@ function _setup_security_stack() {
 			sed -i -r 's/^\$sa_spam_subject_tag (.*);/\$sa_spam_subject_tag = '"'$SA_SPAM_SUBJECT'"';/g' /etc/amavis/conf.d/20-debian_defaults
 		fi
 
-        # activate short circuits when SA BAYES is certain it has spam.
+        # activate short circuits when SA BAYES is certain it has spam or ham.
         if [ "$SA_SHORTCIRCUIT_BAYES_SPAM" = 1 ]; then
+			# automatically activate the Shortcircuit Plugin
+			sed -i -r 's/^# loadplugin Mail::SpamAssassin::Plugin::Shortcircuit/loadplugin Mail::SpamAssassin::Plugin::Shortcircuit/g' /etc/spamassassin/v320.pre
             sed -i -r 's/^# shortcircuit BAYES_99/shortcircuit BAYES_99/g' /etc/spamassassin/local.cf
         fi
 
         if [ "$SA_SHORTCIRCUIT_BAYES_HAM" = 1 ]; then
+			# automatically activate the Shortcircuit Plugin
+			sed -i -r 's/^# loadplugin Mail::SpamAssassin::Plugin::Shortcircuit/loadplugin Mail::SpamAssassin::Plugin::Shortcircuit/g' /etc/spamassassin/v320.pre
             sed -i -r 's/^# shortcircuit BAYES_00/shortcircuit BAYES_00/g' /etc/spamassassin/local.cf
         fi
 
 		test -e /tmp/docker-mailserver/spamassassin-rules.cf && cp /tmp/docker-mailserver/spamassassin-rules.cf /etc/spamassassin/
-		
-		
+
+
 		if [ "$SPAMASSASSIN_SPAM_TO_INBOX" = "1" ]; then
 				notify 'inf' "Configure Spamassassin/Amavis to put SPAM inbox"
 				bannedbouncecheck=`egrep "final_banned_destiny.*D_BOUNCE" /etc/amavis/conf.d/20-debian_defaults`
@@ -1421,7 +1481,7 @@ function _setup_security_stack() {
 						  then
 									   sed -i "/final_banned_destiny/ s|D_BOUNCE|D_REJECT|" /etc/amavis/conf.d/20-debian_defaults
 							fi
-							
+
 				finalbouncecheck=`egrep "final_spam_destiny.*D_BOUNCE" /etc/amavis/conf.d/20-debian_defaults`
 				  if [ -n "$finalbouncecheck" ] ;
 						  then
@@ -1440,7 +1500,7 @@ function _setup_security_stack() {
 	fi
 
 	echo "1;  # ensure a defined return" >> $dms_amavis_file
-
+	chmod 444 $dms_amavis_file
 
 	# Fail2ban
 	if [ "$ENABLE_FAIL2BAN" = 1 ]; then
@@ -1459,18 +1519,6 @@ function _setup_security_stack() {
 	if [ -f /tmp/docker-mailserver/amavis.cf ]; then
 		cp /tmp/docker-mailserver/amavis.cf /etc/amavis/conf.d/50-user
 	fi
-}
-
-function _setup_elk_forwarder() {
-	notify 'task' 'Setting up Elk forwarder'
-
-	ELK_PORT=${ELK_PORT:="5044"}
-	ELK_HOST=${ELK_HOST:="elk"}
-	notify 'inf' "Enabling log forwarding to ELK ($ELK_HOST:$ELK_PORT)"
-	cat /etc/filebeat/filebeat.yml.tmpl \
-		| sed "s@\$ELK_HOST@$ELK_HOST@g" \
-		| sed "s@\$ELK_PORT@$ELK_PORT@g" \
-		> /etc/filebeat/filebeat.yml
 }
 
 function _setup_logrotate() {
@@ -1757,11 +1805,6 @@ function _start_daemons_dovecot() {
 		#echo "Listing users"
 		#/usr/sbin/dovecot user '*'
 	#fi
-}
-
-function _start_daemons_filebeat() {
-	notify 'task' 'Starting filebeat' 'n'
-    supervisorctl start filebeat
 }
 
 function _start_daemons_fetchmail() {
