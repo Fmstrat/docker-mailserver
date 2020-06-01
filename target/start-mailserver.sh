@@ -15,6 +15,7 @@ DEFAULT_VARS["ENABLE_MANAGESIEVE"]="${ENABLE_MANAGESIEVE:="0"}"
 DEFAULT_VARS["ENABLE_FETCHMAIL"]="${ENABLE_FETCHMAIL:="0"}"
 DEFAULT_VARS["FETCHMAIL_POLL"]="${FETCHMAIL_POLL:="300"}"
 DEFAULT_VARS["ENABLE_LDAP"]="${ENABLE_LDAP:="0"}"
+DEFAULT_VARS["ENABLE_QUOTAS"]="${ENABLE_QUOTAS:="1"}"
 DEFAULT_VARS["LDAP_START_TLS"]="${LDAP_START_TLS:="no"}"
 DEFAULT_VARS["DOVECOT_TLS"]="${DOVECOT_TLS:="no"}"
 DEFAULT_VARS["DOVECOT_MAILBOX_FORMAT"]="${DOVECOT_MAILBOX_FORMAT:="maildir"}"
@@ -38,7 +39,9 @@ DEFAULT_VARS["SRS_SENDER_CLASSES"]="${SRS_SENDER_CLASSES:="envelope_sender"}"
 DEFAULT_VARS["REPORT_RECIPIENT"]="${REPORT_RECIPIENT:="0"}"
 DEFAULT_VARS["LOGROTATE_INTERVAL"]="${LOGROTATE_INTERVAL:=${REPORT_INTERVAL:-"daily"}}"
 DEFAULT_VARS["LOGWATCH_INTERVAL"]="${LOGWATCH_INTERVAL:="none"}"
+DEFAULT_VARS["EXPLICITLY_DEFINED_SPAMASSASSIN_SPAM_TO_INBOX"]="$( [ -z "${SPAMASSASSIN_SPAM_TO_INBOX}" ] && echo "0" || echo "1" )" # used for backward compatibility
 DEFAULT_VARS["SPAMASSASSIN_SPAM_TO_INBOX"]="${SPAMASSASSIN_SPAM_TO_INBOX:="0"}"
+DEFAULT_VARS["MOVE_SPAM_TO_JUNK"]="${MOVE_SPAM_TO_JUNK:="1"}"
 DEFAULT_VARS["VIRUSMAILS_DELETE_DELAY"]="${VIRUSMAILS_DELETE_DELAY:="7"}"
 
 ##########################################################################
@@ -98,7 +101,7 @@ function register_functions() {
 
 	if [ "$SMTP_ONLY" != 1 ]; then
 		_register_setup_function "_setup_dovecot"
-                _register_setup_function "_setup_dovecot_dhparam"
+    _register_setup_function "_setup_dovecot_dhparam"
 		_register_setup_function "_setup_dovecot_quota"
 		_register_setup_function "_setup_dovecot_local_user"
 	fi
@@ -611,21 +614,34 @@ function _setup_dovecot() {
 	rm -f /usr/lib/dovecot/sieve-pipe/*
 	[ -d /tmp/docker-mailserver/sieve-filter ] && cp /tmp/docker-mailserver/sieve-filter/* /usr/lib/dovecot/sieve-filter/
 	[ -d /tmp/docker-mailserver/sieve-pipe ] && cp /tmp/docker-mailserver/sieve-pipe/* /usr/lib/dovecot/sieve-pipe/
+
+  # create global sieve directories
+	mkdir -p /usr/lib/dovecot/sieve-global/before
+	mkdir -p /usr/lib/dovecot/sieve-global/after
+
 	if [ -f /tmp/docker-mailserver/before.dovecot.sieve ]; then
-		sed -i "s/#sieve_before =/sieve_before =/" /etc/dovecot/conf.d/90-sieve.conf
-		cp /tmp/docker-mailserver/before.dovecot.sieve /usr/lib/dovecot/sieve-global/
-		sievec /usr/lib/dovecot/sieve-global/before.dovecot.sieve
+		cp /tmp/docker-mailserver/before.dovecot.sieve /usr/lib/dovecot/sieve-global/before/50-before.dovecot.sieve
+		sievec /usr/lib/dovecot/sieve-global/before/50-before.dovecot.sieve
 	else
-		sed -i "s/  sieve_before =/  #sieve_before =/" /etc/dovecot/conf.d/90-sieve.conf
+	  rm -f /usr/lib/dovecot/sieve-global/before/50-before.dovecot.sieve /usr/lib/dovecot/sieve-global/before/50-before.dovecot.svbin
 	fi
 
 	if [ -f /tmp/docker-mailserver/after.dovecot.sieve ]; then
-		sed -i "s/#sieve_after =/sieve_after =/" /etc/dovecot/conf.d/90-sieve.conf
-		cp /tmp/docker-mailserver/after.dovecot.sieve /usr/lib/dovecot/sieve-global/
-		sievec /usr/lib/dovecot/sieve-global/after.dovecot.sieve
+		cp /tmp/docker-mailserver/after.dovecot.sieve /usr/lib/dovecot/sieve-global/after/50-after.dovecot.sieve
+		sievec /usr/lib/dovecot/sieve-global/after/50-after.dovecot.sieve
 	else
-		sed -i "s/  sieve_after =/  #sieve_after =/" /etc/dovecot/conf.d/90-sieve.conf
+	  rm -f /usr/lib/dovecot/sieve-global/after/50-after.dovecot.sieve /usr/lib/dovecot/sieve-global/after/50-after.dovecot.svbin
 	fi
+
+  # sieve will move spams to .Junk folder when SPAMASSASSIN_SPAM_TO_INBOX=1 and MOVE_SPAM_TO_JUNK=1
+	if [ "$SPAMASSASSIN_SPAM_TO_INBOX" = 1 ] && [ "$MOVE_SPAM_TO_JUNK" = 1 ]; then
+	  notify 'inf' "Spam messages will be moved to the Junk folder."
+	  cp /etc/dovecot/sieve/before/60-spam.sieve /usr/lib/dovecot/sieve-global/before/
+	  sievec /usr/lib/dovecot/sieve-global/before/60-spam.sieve
+	else
+	  rm -f /usr/lib/dovecot/sieve-global/before/60-spam.sieve /usr/lib/dovecot/sieve-global/before/60-spam.svbin
+	fi
+
 	chown docker:docker -R /usr/lib/dovecot/sieve*
 	chmod 550 -R /usr/lib/dovecot/sieve*
 	chmod -f +x /usr/lib/dovecot/sieve-pipe/*
@@ -634,8 +650,8 @@ function _setup_dovecot() {
 function _setup_dovecot_quota() {
     notify 'task' 'Setting up Dovecot quota'
 
-    if [ "$ENABLE_LDAP" = 1 ] || [ "$SMTP_ONLY" = 1 ]; then
-      # Dovecot quota is disabled when using LDAP or SMTP_ONLY
+    if [ "$ENABLE_LDAP" = 1 ] || [ "$SMTP_ONLY" = 1 ] || [ "$ENABLE_QUOTAS" = 0 ]; then
+      # Dovecot quota is disabled when using LDAP or SMTP_ONLY or when explicitly disabled
 
       # disable dovecot quota in docevot confs
       if [ -f /etc/dovecot/conf.d/90-quota.conf ]; then
@@ -924,14 +940,14 @@ function _setup_postfix_aliases() {
 	  [[ $(grep ",$" /tmp/docker-mailserver/postfix-virtual.cf) ]] && sed -i -e "s/, /,/g" -e "s/,$//g" /tmp/docker-mailserver/postfix-virtual.cf
 		# Copying virtual file
 		cp -f /tmp/docker-mailserver/postfix-virtual.cf /etc/postfix/virtual
-		while read from to
+		(grep -v "^\s*$\|^\s*\#" /tmp/docker-mailserver/postfix-virtual.cf || true) | while read from to
 		do
 			# Setting variables for better readability
 			uname=$(echo ${from} | cut -d @ -f1)
 			domain=$(echo ${from} | cut -d @ -f2)
 			# if they are equal it means the line looks like: "user1     other@domain.tld"
 			test "$uname" != "$domain" && echo ${domain} >> /tmp/vhost.tmp
-		done < /tmp/docker-mailserver/postfix-virtual.cf
+		done
 	else
 		notify 'inf' "Warning 'config/postfix-virtual.cf' is not provided. No mail alias/forward created."
 	fi
@@ -1027,34 +1043,48 @@ function _setup_ssl() {
 	# SSL certificate Configuration
 	case $SSL_TYPE in
 		"letsencrypt" )
-			# letsencrypt folders and files mounted in /etc/letsencrypt
-			if [ -e "/etc/letsencrypt/live/$HOSTNAME/fullchain.pem" ]; then
-				KEY=""
-				if [ -e "/etc/letsencrypt/live/$HOSTNAME/privkey.pem" ]; then
-					KEY="privkey"
-				elif [ -e "/etc/letsencrypt/live/$HOSTNAME/key.pem" ]; then
-					KEY="key"
-				else
-					notify 'err' "Cannot access '/etc/letsencrypt/live/"$HOSTNAME"/privkey.pem' nor 'key.pem'"
-				fi
-				if [ -n "$KEY" ]; then
-					notify 'inf' "Adding $HOSTNAME SSL certificate"
+      notify 'inf' "Configuring SSL using 'letsecnrypt'"
+      # letsencrypt folders and files mounted in /etc/letsencrypt
+      local LETSENCRYPT_DOMAIN=""
+      local LETSENCRYPT_KEY=""
 
-					# Postfix configuration
-					sed -i -r 's~smtpd_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem~smtpd_tls_cert_file=/etc/letsencrypt/live/'$HOSTNAME'/fullchain.pem~g' /etc/postfix/main.cf
-					sed -i -r 's~smtpd_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key~smtpd_tls_key_file=/etc/letsencrypt/live/'$HOSTNAME'/'"$KEY"'\.pem~g' /etc/postfix/main.cf
-
-					# Dovecot configuration
-					sed -i -e 's~ssl_cert = </etc/dovecot/ssl/dovecot\.pem~ssl_cert = </etc/letsencrypt/live/'$HOSTNAME'/fullchain\.pem~g' /etc/dovecot/conf.d/10-ssl.conf
-					sed -i -e 's~ssl_key = </etc/dovecot/ssl/dovecot\.key~ssl_key = </etc/letsencrypt/live/'$HOSTNAME'/'"$KEY"'\.pem~g' /etc/dovecot/conf.d/10-ssl.conf
-
-					notify 'inf' "SSL configured with 'letsencrypt' certificates"
-				else
-					notify 'err' "Key filename not set!"
-				fi
+      # first determine the letsencrypt domain by checking both the full hostname or just the domainname if a SAN is used in the cert
+      if [ -e "/etc/letsencrypt/live/$HOSTNAME/fullchain.pem" ]; then
+        LETSENCRYPT_DOMAIN=$HOSTNAME
+      elif [ -e "/etc/letsencrypt/live/$DOMAINNAME/fullchain.pem" ]; then
+        LETSENCRYPT_DOMAIN=$DOMAINNAME
 			else
-				notify 'err' "Cannot access '/etc/letsencrypt/live/"$HOSTNAME"/fullchain.pem'"
+				notify 'err' "Cannot access '/etc/letsencrypt/live/"$HOSTNAME"/fullchain.pem' or '/etc/letsencrypt/live/"$DOMAINNAME"/fullchain.pem'"
+        return 1
 			fi
+
+      # then determine the keyfile to use
+			if [ -n "$LETSENCRYPT_DOMAIN" ]; then
+				if [ -e "/etc/letsencrypt/live/$LETSENCRYPT_DOMAIN/privkey.pem" ]; then
+					LETSENCRYPT_KEY="privkey"
+				elif [ -e "/etc/letsencrypt/live/$LETSENCRYPT_DOMAIN/key.pem" ]; then
+					LETSENCRYPT_KEY="key"
+				else
+					notify 'err' "Cannot access '/etc/letsencrypt/live/"$LETSENCRYPT_DOMAIN"/privkey.pem' nor 'key.pem'"
+          return 1
+				fi
+      fi
+
+      # finally, make the changes to the postfix and dovecot configurations
+      if [ -n "$LETSENCRYPT_KEY" ]; then
+        notify 'inf' "Adding $LETSENCRYPT_DOMAIN SSL certificate to the postfix and dovecot configuration"
+
+        # Postfix configuration
+        sed -i -r 's~smtpd_tls_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem~smtpd_tls_cert_file=/etc/letsencrypt/live/'$LETSENCRYPT_DOMAIN'/fullchain.pem~g' /etc/postfix/main.cf
+        sed -i -r 's~smtpd_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key~smtpd_tls_key_file=/etc/letsencrypt/live/'$LETSENCRYPT_DOMAIN'/'"$LETSENCRYPT_KEY"'\.pem~g' /etc/postfix/main.cf
+
+        # Dovecot configuration
+        sed -i -e 's~ssl_cert = </etc/dovecot/ssl/dovecot\.pem~ssl_cert = </etc/letsencrypt/live/'$LETSENCRYPT_DOMAIN'/fullchain\.pem~g' /etc/dovecot/conf.d/10-ssl.conf
+        sed -i -e 's~ssl_key = </etc/dovecot/ssl/dovecot\.key~ssl_key = </etc/letsencrypt/live/'$LETSENCRYPT_DOMAIN'/'"$LETSENCRYPT_KEY"'\.pem~g' /etc/dovecot/conf.d/10-ssl.conf
+
+        notify 'inf' "SSL configured with 'letsencrypt' certificates"
+      fi
+      return 0
 		;;
 	"custom" )
 		# Adding CA signed SSL certificate if provided in 'postfix/ssl' folder
@@ -1474,19 +1504,18 @@ function _setup_security_stack() {
 		test -e /tmp/docker-mailserver/spamassassin-rules.cf && cp /tmp/docker-mailserver/spamassassin-rules.cf /etc/spamassassin/
 
 
-		if [ "$SPAMASSASSIN_SPAM_TO_INBOX" = "1" ]; then
+		if [ "$SPAMASSASSIN_SPAM_TO_INBOX" = 1 ]; then
 				notify 'inf' "Configure Spamassassin/Amavis to put SPAM inbox"
-				bannedbouncecheck=`egrep "final_banned_destiny.*D_BOUNCE" /etc/amavis/conf.d/20-debian_defaults`
-				  if [ -n "$bannedbouncecheck" ] ;
-						  then
-									   sed -i "/final_banned_destiny/ s|D_BOUNCE|D_REJECT|" /etc/amavis/conf.d/20-debian_defaults
-							fi
 
-				finalbouncecheck=`egrep "final_spam_destiny.*D_BOUNCE" /etc/amavis/conf.d/20-debian_defaults`
-				  if [ -n "$finalbouncecheck" ] ;
-						  then
-									   sed -i "/final_spam_destiny/ s|D_BOUNCE|D_PASS|" /etc/amavis/conf.d/20-debian_defaults
-							fi
+				sed -i "s/\$final_spam_destiny.*=.*$/\$final_spam_destiny = D_PASS;/g" /etc/amavis/conf.d/49-docker-mailserver
+				sed -i "s/\$final_bad_header_destiny.*=.*$/\$final_bad_header_destiny = D_PASS;/g" /etc/amavis/conf.d/49-docker-mailserver
+		else
+		  	sed -i "s/\$final_spam_destiny.*=.*$/\$final_spam_destiny = D_BOUNCE;/g" /etc/amavis/conf.d/49-docker-mailserver
+				sed -i "s/\$final_bad_header_destiny.*=.*$/\$final_bad_header_destiny = D_BOUNCE;/g" /etc/amavis/conf.d/49-docker-mailserver
+
+				if [ "${DEFAULT_VARS['EXPLICITLY_DEFINED_SPAMASSASSIN_SPAM_TO_INBOX']}" = 0 ]; then
+          notify 'warn' "Spam messages WILL NOT BE DELIVERED, you will NOT be notified of ANY message bounced. Please define SPAMASSASSIN_SPAM_TO_INBOX explicitly."
+        fi
 		fi
 
 	fi

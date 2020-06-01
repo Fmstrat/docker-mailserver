@@ -23,8 +23,7 @@ If you run into problems, please raise issues and ask for help. Don't forget to 
 Includes:
 
 - [Postfix](http://www.postfix.org) with smtp or ldap auth
-- [Dovecot](https://www.dovecot.org) for sasl, imap (and optional pop3) with ssl support, with ldap auth
-  - Dovecot is installed from the [Dovecot Community Repo](https://wiki2.dovecot.org/PrebuiltBinaries)
+- [Dovecot](https://www.dovecot.org) for sasl, imap (and optional pop3) with ssl support, with ldap auth, sieve and [quotas](https://github.com/tomav/docker-mailserver/wiki/Configure-Accounts#mailbox-quota)
 - saslauthd with ldap auth
 - [Amavis](https://www.amavis.org/)
 - [Spamassasin](http://spamassassin.apache.org/) supporting custom rules
@@ -162,6 +161,7 @@ services:
       - ./config/:/tmp/docker-mailserver/
     environment:
       - ENABLE_SPAMASSASSIN=1
+      - SPAMASSASSIN_SPAM_TO_INBOX=1
       - ENABLE_CLAMAV=1
       - ENABLE_FAIL2BAN=1
       - ENABLE_POSTGREY=1
@@ -203,6 +203,7 @@ services:
       - ./config/:/tmp/docker-mailserver/
     environment:
       - ENABLE_SPAMASSASSIN=1
+      - SPAMASSASSIN_SPAM_TO_INBOX=1
       - ENABLE_CLAMAV=1
       - ENABLE_FAIL2BAN=1
       - ENABLE_POSTGREY=1
@@ -352,6 +353,14 @@ Set the mailbox size limit for all users. If set to zero, the size will be unlim
 
 - **empty** => 0 (no limit)
 
+
+##### ENABLE_QUOTAS
+
+- **1** => Dovecot quota is enabled
+- 0 => Dovecot quota is disabled
+  
+See [mailbox quota](https://github.com/tomav/docker-mailserver/wiki/Configure-Accounts#mailbox-quota).
+
 ##### POSTFIX\_MESSAGE\_SIZE\_LIMIT
 
 Set the message size limit for all users. If set to zero, the size will be unlimited (not recommended!)
@@ -476,8 +485,25 @@ Finally the logrotate interval **may** affect the period for generated reports. 
 
 ##### ENABLE_SPAMASSASSIN
 
+
   - **0** => Spamassassin is disabled
   - 1 => Spamassassin is enabled
+
+**/!\\ Spam delivery:** when Spamassassin is enabled, messages marked as spam WILL NOT BE DELIVERED. 
+Use `SPAMASSASSIN_SPAM_TO_INBOX=1` for receiving spam messages.
+
+##### SPAMASSASSIN_SPAM_TO_INBOX
+
+
+  - **0** => Spam messages will be bounced (_rejected_) without any notification (_dangerous_).
+  - 1 => Spam messages will be delivered to the inbox and tagged as spam using `SA_SPAM_SUBJECT`.
+
+##### MOVE_SPAM_TO_JUNK
+
+  - **1** => Spam messages will be delivered in the `Junk` folder.
+  - 0 => Spam messages will be delivered in the mailbox.
+
+Note: this setting needs `SPAMASSASSIN_SPAM_TO_INBOX=1`
 
 ##### SA_TAG
 
