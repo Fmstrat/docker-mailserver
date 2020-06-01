@@ -32,7 +32,7 @@ echo "${log_date} Using postmaster address ${PM_ADDRESS}"
 
 # Create an array of files to monitor, must be the same as in start-mailserver.sh
 declare -a cf_files=()
-for file in postfix-accounts.cf postfix-virtual.cf postfix-aliases.cf; do
+for file in postfix-accounts.cf postfix-virtual.cf postfix-aliases.cf dovecot-quotas.cf; do
   [ -f "$file" ] && cf_files+=("$file")
 done
 
@@ -91,11 +91,11 @@ if [[ $chksum == *"FAIL"* ]]; then
 			fi
 			# add domain-specific auth from config file
 			if [ -f /tmp/docker-mailserver/postfix-sasl-password.cf ]; then
-				while read line; do
+				(grep -v "^\s*$\|^\s*\#" /tmp/docker-mailserver/postfix-sasl-password.cf || true) | while read line; do
 					if ! echo "$line" | grep -q -e "\s*#"; then
 						echo "$line" >> /etc/postfix/sasl_passwd
 					fi
-				done < /tmp/docker-mailserver/postfix-sasl-password.cf
+				done
 			fi
 			# add default relay
 			if [ ! -z "$RELAY_USER" ] && [ ! -z "$RELAY_PASSWORD" ]; then
@@ -103,11 +103,11 @@ if [[ $chksum == *"FAIL"* ]]; then
 			fi
 			# add relay maps from file
 			if [ -f /tmp/docker-mailserver/postfix-relaymap.cf ]; then
-				while read line; do
+				(grep -v "^\s*$\|^\s*\#" /tmp/docker-mailserver/postfix-relaymap.cf || true) | while read line; do
 					if ! echo "$line" | grep -q -e "\s*#"; then
 						echo "$line" >> /etc/postfix/relayhost_map
 					fi
-				done < /tmp/docker-mailserver/postfix-relaymap.cf
+				done
 			fi
 		fi
 
@@ -119,14 +119,26 @@ if [[ $chksum == *"FAIL"* ]]; then
 			# Setting variables for better readability
 			user=$(echo ${login} | cut -d @ -f1)
 			domain=$(echo ${login} | cut -d @ -f2)
+
+			user_attributes=""
+			# test if user has a defined quota
+			if [ -f /tmp/docker-mailserver/dovecot-quotas.cf ]; then
+			  user_quota=($(grep "${user}@${domain}:" -i /tmp/docker-mailserver/dovecot-quotas.cf | tr ':' '\n'))
+
+			  if [ ${#user_quota[@]} -eq 2 ]; then
+			    user_attributes="${user_attributes}userdb_quota_rule=*:bytes=${user_quota[1]}"
+			  fi
+			fi
+
 			# Let's go!
 			echo "${login} ${domain}/${user}/" >> /etc/postfix/vmailbox
 			# User database for dovecot has the following format:
 			# user:password:uid:gid:(gecos):home:(shell):extra_fields
 			# Example :
 			# ${login}:${pass}:5000:5000::/var/mail/${domain}/${user}::userdb_mail=maildir:/var/mail/${domain}/${user}
-			echo "${login}:${pass}:5000:5000::/var/mail/${domain}/${user}::" >> /etc/dovecot/userdb
+			echo "${login}:${pass}:5000:5000::/var/mail/${domain}/${user}::${user_attributes}" >> /etc/dovecot/userdb
 			mkdir -p /var/mail/${domain}/${user}
+
 			# Copy user provided sieve file, if present
 			test -e /tmp/docker-mailserver/${login}.dovecot.sieve && cp /tmp/docker-mailserver/${login}.dovecot.sieve /var/mail/${domain}/${user}/.dovecot.sieve
 			echo ${domain} >> /tmp/vhost.tmp
@@ -153,14 +165,14 @@ if [[ $chksum == *"FAIL"* ]]; then
 	if [ -f /tmp/docker-mailserver/postfix-virtual.cf ]; then
 		# Copying virtual file
 		cp -f /tmp/docker-mailserver/postfix-virtual.cf /etc/postfix/virtual
-		while read from to
+		(grep -v "^\s*$\|^\s*\#" /tmp/docker-mailserver/postfix-virtual.cf || true) | while read from to
 		do
 			# Setting variables for better readability
 			uname=$(echo ${from} | cut -d @ -f1)
 			domain=$(echo ${from} | cut -d @ -f2)
 			# if they are equal it means the line looks like: "user1	 other@domain.tld"
 			test "$uname" != "$domain" && echo ${domain} >> /tmp/vhost.tmp
-		done < /tmp/docker-mailserver/postfix-virtual.cf
+		done
 	fi
 	if [ -f /tmp/docker-mailserver/postfix-regexp.cf ]; then
 		# Copying regexp alias file
@@ -171,23 +183,23 @@ if [[ $chksum == *"FAIL"* ]]; then
 		}' /etc/postfix/main.cf
 	fi
 	fi
-	# Set vhost 
+	# Set vhost
 	if [ -f /tmp/vhost.tmp ]; then
 		cat /tmp/vhost.tmp | sort | uniq > /etc/postfix/vhost && rm /tmp/vhost.tmp
 	fi
-	
+
 	# Set right new if needed
 	if [ `find /var/mail -maxdepth 3 -a \( \! -user 5000 -o \! -group 5000 \) | grep -c .` != 0 ]; then
 		chown -R 5000:5000 /var/mail
 	fi
-	
+
 	# Restart of the postfix
 	supervisorctl restart postfix
-	
+
 	# Prevent restart of dovecot when smtp_only=1
 	if [ ! $SMTP_ONLY = 1 ]; then
 		supervisorctl restart dovecot
-	fi 
+	fi
 
 	echo "${log_date} Update checksum"
 	sha512sum ${cf_files[@]/#/--tag } >$CHKSUM_FILE

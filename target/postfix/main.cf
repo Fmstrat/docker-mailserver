@@ -1,6 +1,6 @@
 # See /usr/share/postfix/main.cf.dist for a commented, more complete version
 
-smtpd_banner = $myhostname ESMTP $mail_name (Debian)
+smtpd_banner = $myhostname ESMTP
 biff = no
 append_dot_mydomain = no
 readme_directory = no
@@ -23,11 +23,14 @@ smtpd_tls_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
 #smtpd_tls_CAfile=
 #smtp_tls_CAfile=
 smtpd_tls_security_level = may
-smtpd_use_tls=yes
 smtpd_tls_loglevel = 1
 smtp_tls_security_level = may
 smtp_tls_loglevel = 1
-tls_ssl_options = NO_COMPRESSION
+
+# Reduces CPU overhead with `NO_COMPRESSION`, SMTP not at risk of CRIME attack (see git blame for details)
+# Reduce opportunities for a potential CPU exhaustion attack with `NO_RENEGOTIATION`
+tls_ssl_options = NO_COMPRESSION, NO_RENEGOTIATION
+
 tls_high_cipherlist = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256
 tls_preempt_cipherlist = yes
 smtpd_tls_protocols = !SSLv2,!SSLv3,!TLSv1,!TLSv1.1
