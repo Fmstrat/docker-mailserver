@@ -405,7 +405,7 @@ function check() {
 }
 
 function _check_hostname() {
-	notify "task" "Check that hostname/domainname is provided or overidden (no default docker hostname/kubernetes) [$FUNCNAME]"
+	notify "task" "Check that hostname/domainname is provided or overridden (no default docker hostname/kubernetes) [$FUNCNAME]"
 
 	if [[ ! -z ${DEFAULT_VARS["OVERRIDE_HOSTNAME"]} ]]; then
 		export HOSTNAME=${DEFAULT_VARS["OVERRIDE_HOSTNAME"]}
@@ -786,7 +786,7 @@ function _setup_ldap() {
 	# _dovecot_ldap_mapping["DOVECOT_USER_FILTER"]="${DOVECOT_USER_FILTER:="${LDAP_QUERY_FILTER_USER}"}"
 
 	for var in ${!_dovecot_ldap_mapping[@]}; do
-		export $var=${_dovecot_ldap_mapping[$var]}
+		export $var="${_dovecot_ldap_mapping[$var]}"
 	done
 
 	configomat.sh "DOVECOT_" "/etc/dovecot/dovecot-ldap.conf.ext"
@@ -1043,7 +1043,7 @@ function _setup_ssl() {
 	# SSL certificate Configuration
 	case $SSL_TYPE in
 		"letsencrypt" )
-      notify 'inf' "Configuring SSL using 'letsecnrypt'"
+      notify 'inf' "Configuring SSL using 'letsencrypt'"
       # letsencrypt folders and files mounted in /etc/letsencrypt
       local LETSENCRYPT_DOMAIN=""
       local LETSENCRYPT_KEY=""
