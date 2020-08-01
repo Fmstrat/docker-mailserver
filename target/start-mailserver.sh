@@ -505,7 +505,7 @@ function _setup_chksum_file() {
           pushd /tmp/docker-mailserver
 
           declare -a cf_files=()
-          for file in postfix-accounts.cf postfix-virtual.cf postfix-aliases.cf dovecot-quotas.cf; do
+          for file in postfix-accounts.cf postfix-virtual.cf postfix-aliases.cf dovecot-quotas.cf /etc/letsencrypt/acme.json "/etc/letsencrypt/live/$HOSTNAME/key.pem" "/etc/letsencrypt/live/$HOSTNAME/fullchain.pem"; do
             [ -f "$file" ] && cf_files+=("$file")
           done
 
@@ -1048,6 +1048,8 @@ function _setup_ssl() {
       local LETSENCRYPT_DOMAIN=""
       local LETSENCRYPT_KEY=""
 
+      [[ -f /etc/letsencrypt/acme.json ]] && (extractCertsFromAcmeJson "$HOSTNAME" || extractCertsFromAcmeJson "$DOMAINNAME")
+
       # first determine the letsencrypt domain by checking both the full hostname or just the domainname if a SAN is used in the cert
       if [ -e "/etc/letsencrypt/live/$HOSTNAME/fullchain.pem" ]; then
         LETSENCRYPT_DOMAIN=$HOSTNAME
@@ -1326,7 +1328,7 @@ function _setup_postfix_relay_hosts() {
 	if [ -f /tmp/docker-mailserver/postfix-sasl-password.cf ]; then
 		notify 'inf' "Adding relay authentication from postfix-sasl-password.cf"
 		while read line; do
-			if ! echo "$line" | grep -q -e "\s*#"; then
+			if ! echo "$line" | grep -q -e "^\s*#"; then
 				echo "$line" >> /etc/postfix/sasl_passwd
 			fi
 		done < /tmp/docker-mailserver/postfix-sasl-password.cf
