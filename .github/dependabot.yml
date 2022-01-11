@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "docker-mailserver/maintainers"
+    labels:
+      - "area/ci"
+      - "kind/update"
+      - "priority/low"
+
+  - package-ecosystem: "docker"
+    directory: /
+    schedule:
+      interval: "weekly"
+    reviewers:
+      - "docker-mailserver/maintainers"
+    labels:
+      - "area/ci"
+      - "kind/update"
+      - "priority/medium"

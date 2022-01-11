@@ -1,346 +1,247 @@
-#!/bin/sh
+#! /bin/bash
 
-##
-# Wrapper for various setup scripts included in the docker-mailserver
-#
+# version   v1.0.0
+# executed  manually / via Make
+# task      wrapper for various setup scripts
 
+CONFIG_PATH=
+CONTAINER_NAME=
 CRI=
+DEFAULT_CONFIG_PATH=
+DESIRED_CONFIG_PATH=
+DIR="$(pwd)"
+DMS_CONFIG='/tmp/docker-mailserver'
+IMAGE_NAME=
+DEFAULT_IMAGE_NAME='docker.io/mailserver/docker-mailserver:latest'
+INFO=
+PODMAN_ROOTLESS=false
+USE_SELINUX=
+USE_TTY=
+VOLUME=
 
-_check_root() {
-  if [[ $EUID -ne 0 ]]; then
-    echo "Curently docker-mailserver doesn't support podman's rootless mode, please run this script as root user."
-    exit 1
-  fi
+RED="\e[31m\e[1m"
+WHITE="\e[37m"
+ORANGE="\e[38;5;214m"
+LBLUE="\e[94m"
+RESET="\e[0m"
+
+set -euEo pipefail
+shopt -s inherit_errexit
+trap '__err "${BASH_SOURCE}" "${FUNCNAME[0]:-?}" "${BASH_COMMAND:-?}" "${LINENO:-?}" "${?:-?}"' ERR
+
+function __err
+{
+  [[ ${5} -gt 1 ]] && exit 1
+
+  local ERR_MSG="\n--- ${RED}UNCHECKED ERROR${RESET}"
+  ERR_MSG+="\n  - script    = ${1}"
+  ERR_MSG+="\n  - function  = ${2}"
+  ERR_MSG+="\n  - command   = ${3}"
+  ERR_MSG+="\n  - line      = ${4}"
+  ERR_MSG+="\n  - exit code = ${5}"
+  ERR_MSG+='\n\nThis should not have happened. Please file a bug report.\n'
+
+  echo -e "${ERR_MSG}"
 }
 
-if [ -z "$CRI" ]; then
-  if [ ! -z "$(command -v docker)" ]; then
-    CRI=docker
-  elif [ ! -z "$(command -v podman)" ]; then
-    CRI=podman
-    _check_root
-  else
-    echo "No Support Container Runtime Interface Detected."
-    exit 1
-  fi
-fi
+function _show_local_usage
+{
+  # shellcheck disable=SC2059
+  printf "${ORANGE}OPTIONS${RESET}
+    ${LBLUE}Config path, container or image adjustments${RESET}
+        -i IMAGE_NAME
+            Provides the name of the 'docker-mailserver' image. The default value is
+            '${WHITE}${DEFAULT_IMAGE_NAME}${RESET}'
 
-INFO=$($CRI ps \
-  --no-trunc \
-  --format "{{.Image}};{{.Names}}" \
-  --filter label=org.label-schema.name="docker-mailserver" | \
-  tail -1)
+        -c CONTAINER_NAME
+            Provides the name of the running container.
 
-IMAGE_NAME=${INFO%;*}
-CONTAINER_NAME=${INFO#*;}
-DEFAULT_CONFIG_PATH="$(pwd)/config"
-USE_CONTAINER=false
+        -p PATH
+            Provides the local path of the config folder to the temporary container instance.
+            Does not work if an existing a 'docker-mailserver' container is already running.
 
-_update_config_path() {
-  if [ ! -z "$CONTAINER_NAME" ]; then
-    VOLUME=$(docker inspect $CONTAINER_NAME \
-      --format="{{range .Mounts}}{{ println .Source .Destination}}{{end}}" | \
-      grep "/tmp/docker-mailserver$" 2>/dev/null)
-  fi
+    ${LBLUE}SELinux${RESET}
+        -z
+            Allows container access to the bind mount content that is shared among
+            multiple containers on a SELinux-enabled host.
 
-  if [ ! -z "$VOLUME" ]; then
-    CONFIG_PATH=$(echo $VOLUME | awk '{print $1}')
-  fi
-}
+        -Z
+            Allows container access to the bind mount content that is private and
+            unshared with other containers on a SELinux-enabled host.
 
-if [ -z "$IMAGE_NAME" ]; then
-  if [ "$CRI" = "docker" ]; then
-    IMAGE_NAME=tvial/docker-mailserver:latest
-  elif [ "$CRI" = "podman" ]; then
-    IMAGE_NAME=docker.io/tvial/docker-mailserver:latest
-  fi
-fi
+    ${LBLUE}Podman${RESET}
+        -R
+            Accept running in Podman rootless mode. Ignored when using Docker / Docker Compose.
 
-_inspect() {
-  if _docker_image_exists "$IMAGE_NAME"; then
-    echo "Image: $IMAGE_NAME"
-  else
-    echo "Image: '$IMAGE_NAME' can’t be found."
-  fi
-  if [ -n "$CONTAINER_NAME" ]; then
-    echo "Container: $CONTAINER_NAME"
-    echo "Config mount: $CONFIG_PATH"
-  else
-    echo "Container: Not running, please start docker-mailserver."
-  fi
-}
-
-_usage() {
-  echo "Usage: $0 [-i IMAGE_NAME] [-c CONTAINER_NAME] <subcommand> <subcommand> [args]
-
-OPTIONS:
-
-  -i IMAGE_NAME     The name of the docker-mailserver image, by default
-                    'tvial/docker-mailserver:latest' for docker, and
-                    'docker.io/tvial/docker-mailserver:latest' for podman.
-
-  -c CONTAINER_NAME The name of the running container.
-
-  -p PATH           config folder path (default: $(pwd)/config)
-
-SUBCOMMANDS:
-
-  email:
-
-    $0 email add <email> [<password>]
-    $0 email update <email> [<password>]
-    $0 email del <email>
-    $0 email restrict <add|del|list> <send|receive> [<email>]
-    $0 email list
-
-  alias:
-    $0 alias add <email> <recipient>
-    $0 alias del <email> <recipient>
-    $0 alias list
-
-  quota:
-    $0 quota set <email> [<quota>]
-    $0 quota del <email>
-
-  config:
-
-    $0 config dkim <keysize> (default: 2048)
-    $0 config ssl <fqdn>
-
-  relay:
-
-    $0 relay add-domain <domain> <host> [<port>]
-    $0 relay add-auth <domain> <username> [<password>]
-    $0 relay exclude-domain <domain>
-
-  debug:
-
-    $0 debug fetchmail
-    $0 debug fail2ban [<unban> <ip-address>]
-    $0 debug show-mail-logs
-    $0 debug inspect
-    $0 debug login <commands>
 "
-  exit 1
+
+  [[ ${1:-} == 'no-exit' ]] && return 0
+
+  # shellcheck disable=SC2059
+  printf "${ORANGE}EXIT STATUS${RESET}
+    Exit status is 0 if the command was successful. If there was an unexpected error, an error
+    message is shown describing the error. In case of an error, the script will exit with exit
+    status 1.
+
+"
 }
 
-_docker_image_exists() {
-  if ${CRI} history -q "$1" >/dev/null 2>&1; then
-    return 0
-  else
-    return 1
+function _get_absolute_script_directory
+{
+  if [[ "$(uname)" == 'Darwin' ]]
+  then
+    readlink() {
+      # requires coreutils
+      greadlink "${@:+$@}"
+    }
+  fi
+
+  if dirname "$(readlink -f "${0}")" &>/dev/null
+  then
+    DIR="$(dirname "$(readlink -f "${0}")")"
+  elif realpath -e -L "${0}" &>/dev/null
+  then
+    DIR="$(realpath -e -L "${0}")"
+    DIR="${DIR%/setup.sh}"
   fi
 }
 
-if tty -s ; then
-  USE_TTY="-ti"
-fi
-
-_docker_image() {
-  if [ "$USE_CONTAINER" = true ]; then
-    # Reuse existing container specified on command line
-    ${CRI} exec ${USE_TTY} "$CONTAINER_NAME" "$@"
+function _set_default_config_path
+{
+  if [[ -d "${DIR}/config" ]]
+  then
+    # legacy path (pre v10.2.0)
+    DEFAULT_CONFIG_PATH="${DIR}/config"
   else
-    # Start temporary container with specified image
-    if ! _docker_image_exists "$IMAGE_NAME"; then
-      echo "Image '$IMAGE_NAME' not found. Pulling ..."
-      ${CRI} pull "$IMAGE_NAME"
+    DEFAULT_CONFIG_PATH="${DIR}/docker-data/dms/config"
+  fi
+}
+
+function _handle_config_path
+{
+  if [[ -z ${DESIRED_CONFIG_PATH} ]]
+  then
+    # no desired config path
+    if [[ -n ${CONTAINER_NAME} ]]
+    then
+      VOLUME=$(${CRI} inspect "${CONTAINER_NAME}" \
+        --format="{{range .Mounts}}{{ println .Source .Destination}}{{end}}" | \
+        grep "${DMS_CONFIG}$" 2>/dev/null || :)
     fi
 
-    ${CRI} run \
-      --rm \
-      -v "$CONFIG_PATH":/tmp/docker-mailserver \
-      ${USE_TTY} "$IMAGE_NAME" $@
-  fi
-}
+    if [[ -n ${VOLUME} ]]
+    then
+      CONFIG_PATH=$(echo "${VOLUME}" | awk '{print $1}')
+    fi
 
-_docker_container() {
-  if [ -n "$CONTAINER_NAME" ]; then
-    ${CRI} exec ${USE_TTY} "$CONTAINER_NAME" "$@"
+    if [[ -z ${CONFIG_PATH} ]]
+    then
+      CONFIG_PATH=${DEFAULT_CONFIG_PATH}
+    fi
   else
-    echo "The docker-mailserver is not running!"
-    exit 1
+    CONFIG_PATH=${DESIRED_CONFIG_PATH}
   fi
 }
 
-while getopts ":c:i:p:" OPT; do
-  case $OPT in
-    c)
-      CONTAINER_NAME="$OPTARG"
-      USE_CONTAINER=true # Container specified, connect to running instance
-      ;;
-    i)
-      IMAGE_NAME="$OPTARG"
-      ;;
-    p)
-      case "$OPTARG" in
-      /*)
-          WISHED_CONFIG_PATH="$OPTARG"
-          ;;
-      *)
-          WISHED_CONFIG_PATH="$(pwd)/$OPTARG"
-          ;;
-      esac
-      if [ ! -d "$WISHED_CONFIG_PATH" ]; then
-        echo "Directory doesn't exist"
-        _usage
-        exit 1
-      fi
-      ;;
-   \?)
-     echo "Invalid option: -$OPTARG" >&2
-     ;;
-  esac
-done
-
-if [ ! -n "$WISHED_CONFIG_PATH" ]; then
-  # no wished config path
-  _update_config_path
-
-  if [ ! -n "$CONFIG_PATH" ]; then
-    CONFIG_PATH=$DEFAULT_CONFIG_PATH
+function _run_in_new_container
+{
+  # start temporary container with specified image
+  if ! ${CRI} history -q "${IMAGE_NAME}" &>/dev/null
+  then
+    echo "Image '${IMAGE_NAME}' not found. Pulling ..."
+    ${CRI} pull "${IMAGE_NAME}"
   fi
-else
-  CONFIG_PATH=$WISHED_CONFIG_PATH
-fi
 
-shift $((OPTIND-1))
+  ${CRI} run --rm "${USE_TTY}" \
+    -v "${CONFIG_PATH}:${DMS_CONFIG}${USE_SELINUX}" \
+    "${IMAGE_NAME}" "${@:+$@}"
+}
 
-case $1 in
+function _main
+{
+  _get_absolute_script_directory
+  _set_default_config_path
 
-  email)
-    shift
-    case $1 in
-      add)
-        shift
-        _docker_image addmailuser $@
-        ;;
-      update)
-        shift
-        _docker_image updatemailuser $@
-        ;;
-      del)
-        shift
-        _docker_image delmailuser $@
-        ;;
-      restrict)
-        shift
-        _docker_container restrict-access $@
-        ;;
-      list)
-        _docker_image listmailuser
-        ;;
-      *)
-        _usage
-        ;;
-    esac
-    ;;
+  local OPTIND
+  while getopts ":c:i:p:zZR" OPT
+  do
+    case ${OPT} in
+      ( i )     IMAGE_NAME="${OPTARG}"     ;;
+      ( z | Z ) USE_SELINUX=":${OPT}"      ;;
+      ( c )     CONTAINER_NAME="${OPTARG}" ;;
+      ( R )     PODMAN_ROOTLESS=true       ;;
+      ( p )
+        case "${OPTARG}" in
+          ( /* ) DESIRED_CONFIG_PATH="${OPTARG}"        ;;
+          ( *  ) DESIRED_CONFIG_PATH="${DIR}/${OPTARG}" ;;
+        esac
 
-  alias)
-    shift
-    case $1 in
-        add)
-          shift
-          _docker_image addalias $@
-          ;;
-        del)
-          shift
-          _docker_image delalias $@
-          ;;
-        list)
-          shift
-          _docker_image listalias $@
-          ;;
-        *)
-          _usage
-          ;;
-    esac
-    ;;
-
-  quota)
-    shift
-    case $1 in
-        set)
-          shift
-          _docker_image setquota $@
-          ;;
-        del)
-          shift
-          _docker_image delquota $@
-          ;;
-        *)
-          _usage
-          ;;
-    esac
-    ;;
-
-  config)
-    shift
-    case $1 in
-      dkim)
-        _docker_image generate-dkim-config $2
-        ;;
-      ssl)
-        _docker_image generate-ssl-certificate "$2"
-        ;;
-      *)
-        _usage
-        ;;
-    esac
-    ;;
-
-  relay)
-    shift
-    case $1 in
-      add-domain)
-        shift
-        _docker_image addrelayhost $@
-        ;;
-      add-auth)
-        shift
-        _docker_image addsaslpassword $@
-        ;;
-      exclude-domain)
-        shift
-        _docker_image excluderelaydomain $@
-        ;;
-      *)
-        _usage
-        ;;
-    esac
-    ;;
-
-  debug)
-    shift
-    case $1 in
-      fetchmail)
-        _docker_image debug-fetchmail
-        ;;
-      fail2ban)
-        shift
-        _docker_container fail2ban $@
-        ;;
-      show-mail-logs)
-        _docker_container cat /var/log/mail/mail.log
-        ;;
-      inspect)
-        _inspect
-        ;;
-      login)
-        shift
-        if [ -z "$1" ]; then
-          _docker_container /bin/bash
-        else
-          _docker_container /bin/bash -c "$@"
+        if [[ ! -d ${DESIRED_CONFIG_PATH} ]]
+        then
+          echo "Specified directory '${DESIRED_CONFIG_PATH}' doesn't exist" >&2
+          exit 1
         fi
         ;;
-      *)
-        _usage
-        ;;
-    esac
-    ;;
 
-  *)
-    _usage
-    ;;
-esac
+      ( * )
+        echo "Invalid option: '-${OPTARG}'" >&2
+        echo -e "Use './setup.sh help' to get a complete overview.\n" >&2
+        _show_local_usage 'no-exit'
+        exit 1
+        ;;
+
+    esac
+  done
+  shift $(( OPTIND - 1 ))
+
+  if command -v docker &>/dev/null
+  then
+    CRI=docker
+  elif command -v podman &>/dev/null
+  then
+    CRI=podman
+    if ! ${PODMAN_ROOTLESS} && [[ ${EUID} -ne 0 ]]
+    then
+      read -r -p "You are running Podman in rootless mode. Continue? [Y/n] "
+      [[ -n ${REPLY} ]] && [[ ${REPLY} =~ (n|N) ]] && exit 0
+    fi
+  else
+    echo 'No supported Container Runtime Interface detected.'
+    exit 1
+  fi
+
+  INFO=$(${CRI} ps --no-trunc --format "{{.Image}};{{.Names}}" --filter \
+    label=org.opencontainers.image.title="docker-mailserver" | tail -1)
+
+  CONTAINER_NAME=${INFO#*;}
+  [[ -z ${IMAGE_NAME} ]] && IMAGE_NAME=${INFO%;*}
+  if [[ -z ${IMAGE_NAME} ]]
+  then
+    IMAGE_NAME=${NAME:-${DEFAULT_IMAGE_NAME}}
+  fi
+
+  if test -t 0
+  then
+    USE_TTY="-it"
+  else
+    # GitHub Actions will fail (or really anything else
+    #   lacking an interactive tty) if we don't set a
+    #   value here; "-t" alone works for these cases.
+    USE_TTY="-t"
+  fi
+
+  _handle_config_path
+
+  if [[ -n ${CONTAINER_NAME} ]]
+  then
+    ${CRI} exec "${USE_TTY}" "${CONTAINER_NAME}" setup "${@:+$@}"
+  else
+    _run_in_new_container setup "${@:+$@}"
+  fi
+
+  [[ ${1} == 'help' ]] && _show_local_usage
+
+  return 0
+}
+
+_main "${@:+$@}"

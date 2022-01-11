@@ -1,41 +1,74 @@
 #! /bin/bash
 
+# shellcheck disable=SC2094
+
+# shellcheck source=../scripts/helper-functions.sh
+. /usr/local/bin/helper-functions.sh
+
 DATABASE=${DATABASE:-/tmp/docker-mailserver/postfix-accounts.cf}
 
-USER="$1"
+function __usage
+{
+  printf "\e[35mADDMAILUSER\e[31m(\e[93m8\e[31m)
+
+\e[38;5;214mNAME\e[39m
+    addmailuser - add an email address (i.e. a user)
+
+\e[38;5;214mSYNOPSIS\e[39m
+    ./setup.sh email add <EMAIL ADDRESS> [<PASSWORD>]
+
+\e[38;5;214mOPTIONS\e[39m
+    \e[94mGeneric Program Information\e[39m
+        help       Print the usage information.
+
+\e[38;5;214mEXAMPLES\e[39m
+    \e[37m./setup.sh email add test@domain.tld\e[39m
+        Add the email account test@domain.tld. You will be prompted
+        to input a password afterwards since no password was supplied.
+
+\e[38;5;214mEXIT STATUS\e[39m
+    Exit status is 0 if command was successful. If wrong arguments are provided
+    or arguments contain errors, the script will exit early with exit status 1.
+
+"
+}
+
+[[ ${1:-} == 'help' ]] && { __usage ; exit 0 ; }
+
+FULL_EMAIL="${1}"
 shift
-PASSWD="$@"
+PASSWD="${*}"
 
-usage() {
-	echo "Usage: addmailuser <user@domain> [<password>]"
-}
+[[ -z ${FULL_EMAIL} ]] && { __usage ; errex 'No username specified' ; }
+[[ ${FULL_EMAIL} =~ .*\@.* ]] || { __usage ; errex 'Username must include the domain' ; }
 
-errex() {
-	echo "$@" 1>&2
-	exit 1
-}
+touch "${DATABASE}"
+create_lock # Protect config file with lock to avoid race conditions
+if grep -qi "^$(escape "${FULL_EMAIL}")|" "${DATABASE}"
+then
+  echo "User '${FULL_EMAIL}' already exists."
+  exit 1
+fi
 
-escape() {
-	echo "${1//./\\.}"
-}
+if [[ -z ${PASSWD} ]]
+then
+  read -r -s -p "Enter Password: " PASSWD
+  echo
+  [[ -z ${PASSWD} ]] && errex "Password must not be empty"
+fi
 
-[ -z "$USER" ] && { usage; errex "no username specified"; }
-expr index "$USER" "@" >/dev/null || { usage; errex "username must include the domain"; }
+HASH="$(doveadm pw -s SHA512-CRYPT -u "${FULL_EMAIL}" -p "${PASSWD}")"
+echo "${FULL_EMAIL}|${HASH}" >> "${DATABASE}"
 
-# Protect config file with lock to avoid race conditions
-touch $DATABASE
-( 
-  flock -e 200
+USER="${FULL_EMAIL%@*}"
+DOMAIN="${FULL_EMAIL#*@}"
 
-  grep -qi "^$(escape "$USER")|" $DATABASE 2>/dev/null &&
-    errex "User \"$USER\" already exists"
-
-  if [ -z "$PASSWD" ]; then
-    read -s -p "Enter Password: " PASSWD
-    echo
-    [ -z "$PASSWD" ] && errex "Password must not be empty"
-  fi
-
-  HASH="$(doveadm pw -s SHA512-CRYPT -u "$USER" -p "$PASSWD")"
-  echo "$USER|$HASH" >> $DATABASE
-) 200<$DATABASE
+# Tests fail if the creation of /var/mail/${DOMAIN}/${USER} doesn't happen fast enough after addmailuser executes (check-for-changes.sh race-condition)
+if [[ -e "/tmp/docker-mailserver-config-chksum" ]] # Prevent infinite loop in tests like "checking accounts: user3 should have been added to /tmp/docker-mailserver/postfix-accounts.cf even when that file does not exist"
+then
+  while [[ ! -d "/var/mail/${DOMAIN}/${USER}" ]]
+  do
+    echo "Waiting for dovecot to create /var/mail/${DOMAIN}/${USER}..."
+    sleep 1
+  done
+fi

@@ -9,16 +9,19 @@ function teardown() {
 }
 
 function setup_file() {
+    local PRIVATE_CONFIG
+    PRIVATE_CONFIG="$(duplicate_config_for_container .)"
     docker run -d --name mail_with_postgrey \
-		-v "`pwd`/test/config":/tmp/docker-mailserver \
-		-v "`pwd`/test/test-files":/tmp/docker-mailserver-test:ro \
-		-e ENABLE_POSTGREY=1 \
-		-e POSTGREY_DELAY=15 \
-		-e POSTGREY_MAX_AGE=35 \
-		-e POSTGREY_AUTO_WHITELIST_CLIENTS=5 \
-		-e POSTGREY_TEXT="Delayed by postgrey" \
-		-e DMS_DEBUG=0 \
-		-h mail.my-domain.com -t ${NAME}
+              -v "${PRIVATE_CONFIG}":/tmp/docker-mailserver \
+              -v "$(pwd)/test/test-files":/tmp/docker-mailserver-test:ro \
+              -e ENABLE_POSTGREY=1 \
+              -e POSTGREY_DELAY=15 \
+              -e POSTGREY_MAX_AGE=35 \
+              -e POSTGREY_AUTO_WHITELIST_CLIENTS=5 \
+              -e POSTGREY_TEXT="Delayed by Postgrey" \
+              -e ENABLE_DNSBL=1 \
+              -e DMS_DEBUG=0 \
+              -h mail.my-domain.com -t "${NAME}"
     # using postfix availability as start indicator, this might be insufficient for postgrey
     wait_for_smtp_port_in_container mail_with_postgrey
 }
@@ -28,11 +31,11 @@ function teardown_file() {
 }
 
 @test "first" {
-  # this test must come first to reliably identify when to run setup_file
+  skip 'this test must come first to reliably identify when to run setup_file'
 }
 
 @test "checking postgrey: /etc/postfix/main.cf correctly edited" {
-  run docker exec mail_with_postgrey /bin/bash -c "grep 'bl.spamcop.net, check_policy_service inet:127.0.0.1:10023' /etc/postfix/main.cf | wc -l"
+  run docker exec mail_with_postgrey /bin/bash -c "grep 'zen.spamhaus.org, check_policy_service inet:127.0.0.1:10023' /etc/postfix/main.cf | wc -l"
   assert_success
   assert_output 1
 }
@@ -41,7 +44,7 @@ function teardown_file() {
   run docker exec mail_with_postgrey /bin/bash -c "grep '^POSTGREY_OPTS=\"--inet=127.0.0.1:10023 --delay=15 --max-age=35 --auto-whitelist-clients=5\"$' /etc/default/postgrey | wc -l"
   assert_success
   assert_output 1
-  run docker exec mail_with_postgrey /bin/bash -c "grep '^POSTGREY_TEXT=\"Delayed by postgrey\"$' /etc/default/postgrey | wc -l"
+  run docker exec mail_with_postgrey /bin/bash -c "grep '^POSTGREY_TEXT=\"Delayed by Postgrey\"$' /etc/default/postgrey | wc -l"
   assert_success
   assert_output 1
 }
@@ -97,5 +100,5 @@ function teardown_file() {
 }
 
 @test "last" {
-  # this test is only there to reliably mark the end for the teardown_file
+  skip 'this test is only there to reliably mark the end for the teardown_file'
 }

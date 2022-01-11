@@ -2,25 +2,94 @@ load 'test_helper/bats-support/load'
 load 'test_helper/bats-assert/load'
 load 'test_helper/common'
 
-#
-# shared functions
-#
+export IMAGE_NAME
+IMAGE_NAME="${NAME}"
 
-function wait_for_service() {
-  containerName=$1
-  serviceName=$2
-  count=0
-  while ! (docker exec $containerName /usr/bin/supervisorctl status $serviceName | grep RUNNING >/dev/null)
-  do
-    ((count++)) && ((count==30)) && break
-    sleep 5
-  done
-  return $(docker exec $containerName /usr/bin/supervisorctl status $serviceName | grep RUNNING >/dev/null)
+setup() {
+  run_setup_file_if_necessary
 }
 
-function count_processed_changes() {
-  containerName=$1
-  docker exec $containerName cat /var/log/supervisor/changedetector.log | grep "Update checksum" | wc -l
+setup_file() {
+  local PRIVATE_CONFIG
+  PRIVATE_CONFIG="$(duplicate_config_for_container . mail)"
+  mv "${PRIVATE_CONFIG}/user-patches/user-patches.sh" "${PRIVATE_CONFIG}/user-patches.sh"
+  docker run --rm -d --name mail \
+    -v "${PRIVATE_CONFIG}":/tmp/docker-mailserver \
+    -v "$(pwd)/test/test-files":/tmp/docker-mailserver-test:ro \
+    -v "$(pwd)/test/onedir":/var/mail-state \
+    -e AMAVIS_LOGLEVEL=2 \
+    -e DMS_DEBUG=0 \
+    -e ENABLE_CLAMAV=1 \
+    -e ENABLE_MANAGESIEVE=1 \
+    -e ENABLE_QUOTAS=1 \
+    -e ENABLE_SPAMASSASSIN=1 \
+    -e ENABLE_SRS=1 \
+    -e PERMIT_DOCKER=host \
+    -e REPORT_RECIPIENT=user1@localhost.localdomain \
+    -e REPORT_SENDER=report1@mail.my-domain.com \
+    -e SA_KILL=3.0 \
+    -e SA_SPAM_SUBJECT="SPAM: " \
+    -e SA_TAG=-5.0 \
+    -e SA_TAG2=2.0 \
+    -e SASL_PASSWD="external-domain.com username:password" \
+    -e SPOOF_PROTECTION=1 \
+    -e SSL_TYPE='snakeoil' \
+    -e VIRUSMAILS_DELETE_DELAY=7 \
+    -h mail.my-domain.com \
+    --cap-add=SYS_PTRACE \
+    --tty \
+    "${NAME}"
+
+  wait_for_finished_setup_in_container mail
+
+  # generate accounts after container has been started
+  docker run --rm -e MAIL_USER=added@localhost.localdomain -e MAIL_PASS=mypassword -t "${NAME}" /bin/sh -c 'echo "${MAIL_USER}|$(doveadm pw -s SHA512-CRYPT -u ${MAIL_USER} -p ${MAIL_PASS})"' >> "${PRIVATE_CONFIG}/postfix-accounts.cf"
+  docker exec mail addmailuser pass@localhost.localdomain 'may be \a `p^a.*ssword'
+
+  # setup sieve
+  docker cp "${PRIVATE_CONFIG}/sieve/dovecot.sieve" mail:/var/mail/localhost.localdomain/user1/.dovecot.sieve
+
+  # this relies on the checksum file beeing updated after all changes have been applied
+  wait_for_changes_to_be_detected_in_container mail
+
+  wait_for_smtp_port_in_container mail
+
+  # wait for clamav to be fully setup or we will get errors on the log
+  repeat_in_container_until_success_or_timeout 60 mail test -e /var/run/clamav/clamd.ctl
+
+  # sending test mails
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/amavis-spam.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/amavis-virus.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-alias-external.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-alias-local.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-alias-recipient-delimiter.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-user1.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-user2.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-user3.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-added.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-user-and-cc-local-alias.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-regexp-alias-external.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-regexp-alias-local.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/existing-catchall-local.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/sieve-spam-folder.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/sieve-pipe.txt"
+  docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/non-existing-user.txt"
+  docker exec mail /bin/sh -c "sendmail root < /tmp/docker-mailserver-test/email-templates/root-email.txt"
+
+  wait_for_empty_mail_queue_in_container mail
+}
+
+teardown() {
+  run_teardown_file_if_necessary
+}
+
+teardown_file() {
+  docker rm -f mail
+}
+
+# this test must come first to reliably identify when to run setup_file
+@test "first" {
+  skip 'Starting testing of letsencrypt SSL'
 }
 
 #
@@ -28,51 +97,13 @@ function count_processed_changes() {
 #
 
 @test "checking configuration: user-patches.sh executed" {
-  run echo -n "`docker logs mail | grep 'user\-patches\.sh'`"
+  run docker logs mail
   assert_output --partial "Default user-patches.sh successfully executed"
 }
 
 @test "checking configuration: hostname/domainname" {
-  run docker run `docker inspect --format '{{ .Config.Image }}' mail`
+  run docker run "${IMAGE_NAME:?}"
   assert_success
-}
-
-@test "checking configuration: hostname/domainname override: check container hostname is applied correctly" {
-  run docker exec mail_override_hostname /bin/bash -c "hostname | grep unknown.domain.tld"
-  assert_success
-}
-
-@test "checking configuration: hostname/domainname override: check overriden hostname is applied to all configs" {
-  run docker exec mail_override_hostname /bin/bash -c "cat /etc/mailname | grep my-domain.com"
-  assert_success
-  run docker exec mail_override_hostname /bin/bash -c "postconf -n | grep mydomain | grep my-domain.com"
-  assert_success
-  run docker exec mail_override_hostname /bin/bash -c "postconf -n | grep myhostname | grep mail.my-domain.com"
-  assert_success
-  run docker exec mail_override_hostname /bin/bash -c "doveconf | grep hostname | grep mail.my-domain.com"
-  assert_success
-  run docker exec mail_override_hostname /bin/bash -c "cat /etc/opendmarc.conf | grep AuthservID | grep mail.my-domain.com"
-  assert_success
-  run docker exec mail_override_hostname /bin/bash -c "cat /etc/opendmarc.conf | grep TrustedAuthservIDs | grep mail.my-domain.com"
-  assert_success
-  run docker exec mail_override_hostname /bin/bash -c "cat /etc/amavis/conf.d/05-node_id | grep myhostname | grep mail.my-domain.com"
-  assert_success
-}
-
-@test "checking configuration: hostname/domainname override: check hostname in postfix HELO message" {
-  run docker exec mail_override_hostname /bin/bash -c "nc -w 1 0.0.0.0 25 | grep mail.my-domain.com"
-  assert_success
-}
-
-@test "checking configuration: hostname/domainname override: check headers of received mail" {
-  run docker exec mail_override_hostname /bin/sh -c "ls -A /var/mail/localhost.localdomain/user1/new | wc -l | grep 1"
-  assert_success
-  run docker exec mail_override_hostname /bin/sh -c "cat /var/mail/localhost.localdomain/user1/new/* | grep mail.my-domain.com"
-  assert_success
-
-  # test whether the container hostname is not found in received mail
-  run docker exec mail_override_hostname /bin/sh -c "cat /var/mail/localhost.localdomain/user1/new/* | grep unknown.domain.tld"
-  assert_failure
 }
 
 #
@@ -111,11 +142,6 @@ function count_processed_changes() {
 
 @test "checking process: fetchmail (disabled in default configuration)" {
   run docker exec mail /bin/bash -c "ps aux --forest | grep -v grep | grep '/usr/bin/fetchmail'"
-  assert_failure
-}
-
-@test "checking process: clamav (clamav disabled by ENABLED_CLAMAV=0)" {
-  run docker exec mail_disabled_clamav_spamassassin /bin/bash -c "ps aux --forest | grep -v grep | grep '/usr/sbin/clamd'"
   assert_failure
 }
 
@@ -182,7 +208,8 @@ function count_processed_changes() {
 }
 
 @test "checking smtp: authentication fails with wrong password (plain)" {
-  run docker exec mail /bin/sh -c "nc -w 20 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/smtp-auth-plain-wrong.txt | grep 'authentication failed'"
+  run docker exec mail /bin/sh -c "nc -w 20 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/smtp-auth-plain-wrong.txt"
+  assert_output --partial 'authentication failed'
   assert_success
 }
 
@@ -192,7 +219,8 @@ function count_processed_changes() {
 }
 
 @test "checking smtp: authentication fails with wrong password (login)" {
-  run docker exec mail /bin/sh -c "nc -w 20 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/smtp-auth-login-wrong.txt | grep 'authentication failed'"
+  run docker exec mail /bin/sh -c "nc -w 20 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/smtp-auth-login-wrong.txt"
+  assert_output --partial 'authentication failed'
   assert_success
 }
 
@@ -219,13 +247,14 @@ function count_processed_changes() {
 @test "checking smtp: delivers mail to existing account" {
   run docker exec mail /bin/sh -c "grep 'postfix/lmtp' /var/log/mail/mail.log | grep 'status=sent' | grep ' Saved)' | sed 's/.* to=</</g' | sed 's/, relay.*//g' | sort | uniq -c | tr -s \" \""
   assert_success
-  cat <<'EOF' | assert_output
+  assert_output <<'EOF'
  1 <added@localhost.localdomain>
  6 <user1@localhost.localdomain>
  1 <user1@localhost.localdomain>, orig_to=<postmaster@my-domain.com>
  1 <user1@localhost.localdomain>, orig_to=<root>
  1 <user1~test@localhost.localdomain>
  2 <user2@otherdomain.tld>
+ 1 <user3@localhost.localdomain>
 EOF
 }
 
@@ -314,9 +343,10 @@ EOF
 @test "checking accounts: user accounts" {
   run docker exec mail doveadm user '*'
   assert_success
-  [ "${lines[0]}" = "user1@localhost.localdomain" ]
-  [ "${lines[1]}" = "user2@otherdomain.tld" ]
-  [ "${lines[2]}" = "added@localhost.localdomain" ]
+  assert_line --index 0 "user1@localhost.localdomain"
+  assert_line --index 1 "user2@otherdomain.tld"
+  assert_line --index 2 "user3@localhost.localdomain"
+  assert_line --index 3 "added@localhost.localdomain"
 }
 
 @test "checking accounts: user mail folder for user1" {
@@ -326,6 +356,11 @@ EOF
 
 @test "checking accounts: user mail folder for user2" {
   run docker exec mail /bin/bash -c "ls -d /var/mail/otherdomain.tld/user2"
+  assert_success
+}
+
+@test "checking accounts: user mail folder for user3" {
+  run docker exec mail /bin/bash -c "ls -d /var/mail/localhost.localdomain/user3/mail"
   assert_success
 }
 
@@ -346,9 +381,9 @@ EOF
 @test "checking postfix: vhost file is correct" {
   run docker exec mail cat /etc/postfix/vhost
   assert_success
-  [ "${lines[0]}" = "localdomain2.com" ]
-  [ "${lines[1]}" = "localhost.localdomain" ]
-  [ "${lines[2]}" = "otherdomain.tld" ]
+  assert_line --index 0 "localdomain2.com"
+  assert_line --index 1 "localhost.localdomain"
+  assert_line --index 2 "otherdomain.tld"
 }
 
 @test "checking postfix: main.cf overrides" {
@@ -384,11 +419,6 @@ EOF
   assert_failure
 }
 
-@test "checking spamassassin: should not be listed in amavis when disabled" {
-  run docker exec mail_disabled_clamav_spamassassin /bin/sh -c "grep -i 'ANTI-SPAM-SA code' /var/log/mail/mail.log | grep 'NOT loaded'"
-  assert_success
-}
-
 @test "checking spamassassin: all registered domains should see spam headers" {
   run docker exec mail /bin/sh -c "grep -ir 'X-Spam-' /var/mail/localhost.localdomain/user1/new"
   assert_success
@@ -403,267 +433,6 @@ EOF
 
 @test "checking clamav: should be listed in amavis when enabled" {
   run docker exec mail grep -i 'Found secondary av scanner ClamAV-clamscan' /var/log/mail/mail.log
-  assert_success
-}
-
-@test "checking clamav: should not be listed in amavis when disabled" {
-  run docker exec mail_disabled_clamav_spamassassin grep -i 'Found secondary av scanner ClamAV-clamscan' /var/log/mail/mail.log
-  assert_failure
-}
-
-@test "checking clamav: should not be called when disabled" {
-  run docker exec mail_disabled_clamav_spamassassin grep -i 'connect to /var/run/clamav/clamd.ctl failed' /var/log/mail/mail.log
-  assert_failure
-}
-
-#
-# opendkim
-#
-
-@test "checking opendkim: /etc/opendkim/KeyTable should contain 2 entries" {
-  run docker exec mail /bin/sh -c "cat /etc/opendkim/KeyTable | wc -l"
-  assert_success
-  assert_output 2
-}
-
-@test "checking opendkim: /etc/opendkim/KeyTable dummy file generated without keys provided" {
-  run docker exec mail_smtponly_without_config /bin/bash -c "cat /etc/opendkim/KeyTable"
-  assert_success
-}
-
-
-@test "checking opendkim: /etc/opendkim/keys/ should contain 2 entries" {
-  run docker exec mail /bin/sh -c "ls -l /etc/opendkim/keys/ | grep '^d' | wc -l"
-  assert_success
-  assert_output 2
-}
-
-@test "checking opendkim: /etc/opendkim.conf contains nameservers copied from /etc/resolv.conf" {
-  run docker exec mail /bin/bash -c "grep -E '^Nameservers ((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)' /etc/opendkim.conf"
-  assert_success
-}
-
-
-# this set of tests is of low quality. It does not test the RSA-Key size properly via openssl or similar
-# Instead it tests the file-size (here 511) - which may differ with a different domain names
-# This test may be re-used as a global test to provide better test coverage.
-@test "checking opendkim: generator creates default keys size" {
-    # Prepare default key size 2048
-    rm -rf "$(pwd)/test/config/keyDefault" && mkdir -p "$(pwd)/test/config/keyDefault"
-    run docker run --rm \
-      -v "$(pwd)/test/config/keyDefault/":/tmp/docker-mailserver/ \
-      -v "$(pwd)/test/config/postfix-accounts.cf":/tmp/docker-mailserver/postfix-accounts.cf \
-      -v "$(pwd)/test/config/postfix-virtual.cf":/tmp/docker-mailserver/postfix-virtual.cf \
-      `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config | wc -l'
-    assert_success
-    assert_output 6
-
-  run docker run --rm \
-    -v "$(pwd)/test/config/keyDefault/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` \
-    /bin/sh -c 'stat -c%s /etc/opendkim/keys/localhost.localdomain/mail.txt'
-
-  assert_success
-  assert_output 511
-}
-
-# this set of tests is of low quality. It does not test the RSA-Key size properly via openssl or similar
-# Instead it tests the file-size (here 511) - which may differ with a different domain names
-# This test may be re-used as a global test to provide better test coverage.
-@test "checking opendkim: generator creates key size 2048" {
-    # Prepare set key size 2048
-    rm -rf "$(pwd)/test/config/key2048" && mkdir -p "$(pwd)/test/config/key2048"
-    run docker run --rm \
-      -v "$(pwd)/test/config/key2048/":/tmp/docker-mailserver/ \
-      -v "$(pwd)/test/config/postfix-accounts.cf":/tmp/docker-mailserver/postfix-accounts.cf \
-      -v "$(pwd)/test/config/postfix-virtual.cf":/tmp/docker-mailserver/postfix-virtual.cf \
-      `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config 2048 | wc -l'
-    assert_success
-    assert_output 6
-
-  run docker run --rm \
-    -v "$(pwd)/test/config/key2048/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` \
-    /bin/sh -c 'stat -c%s /etc/opendkim/keys/localhost.localdomain/mail.txt'
-
-  assert_success
-  assert_output 511
-}
-
-# this set of tests is of low quality. It does not test the RSA-Key size properly via openssl or similar
-# Instead it tests the file-size (here 329) - which may differ with a different domain names
-# This test may be re-used as a global test to provide better test coverage.
-@test "checking opendkim: generator creates key size 1024" {
-    # Prepare set key size 1024
-    rm -rf "$(pwd)/test/config/key1024" && mkdir -p "$(pwd)/test/config/key1024"
-    run docker run --rm \
-      -v "$(pwd)/test/config/key1024/":/tmp/docker-mailserver/ \
-      -v "$(pwd)/test/config/postfix-accounts.cf":/tmp/docker-mailserver/postfix-accounts.cf \
-      -v "$(pwd)/test/config/postfix-virtual.cf":/tmp/docker-mailserver/postfix-virtual.cf \
-      `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config 1024 | wc -l'
-    assert_success
-    assert_output 6
-
-  run docker run --rm \
-    -v "$(pwd)/test/config/key1024/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` \
-    /bin/sh -c 'stat -c%s /etc/opendkim/keys/localhost.localdomain/mail.txt'
-
-  assert_success
-  assert_output 329
-}
-
-@test "checking opendkim: generator creates keys, tables and TrustedHosts" {
-  rm -rf "$(pwd)/test/config/empty" && mkdir -p "$(pwd)/test/config/empty"
-  run docker run --rm \
-    -v "$(pwd)/test/config/empty/":/tmp/docker-mailserver/ \
-    -v "$(pwd)/test/config/postfix-accounts.cf":/tmp/docker-mailserver/postfix-accounts.cf \
-    -v "$(pwd)/test/config/postfix-virtual.cf":/tmp/docker-mailserver/postfix-virtual.cf \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config | wc -l'
-  assert_success
-  assert_output 6
-  # Check keys for localhost.localdomain
-  run docker run --rm \
-    -v "$(pwd)/test/config/empty/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'ls -1 /etc/opendkim/keys/localhost.localdomain/ | wc -l'
-  assert_success
-  assert_output 2
-  # Check keys for otherdomain.tld
-  run docker run --rm \
-    -v "$(pwd)/test/config/empty/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'ls -1 /etc/opendkim/keys/otherdomain.tld | wc -l'
-  assert_success
-  assert_output 2
-  # Check presence of tables and TrustedHosts
-  run docker run --rm \
-    -v "$(pwd)/test/config/empty/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c "ls -1 /etc/opendkim | grep -E 'KeyTable|SigningTable|TrustedHosts|keys'|wc -l"
-  assert_success
-  assert_output 4
-}
-
-@test "checking opendkim: generator creates keys, tables and TrustedHosts without postfix-accounts.cf" {
-  rm -rf "$(pwd)/test/config/without-accounts" && mkdir -p "$(pwd)/test/config/without-accounts"
-  run docker run --rm \
-    -v "$(pwd)/test/config/without-accounts/":/tmp/docker-mailserver/ \
-    -v "$(pwd)/test/config/postfix-virtual.cf":/tmp/docker-mailserver/postfix-virtual.cf \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config | wc -l'
-  assert_success
-  assert_output 5
-  # Check keys for localhost.localdomain
-  run docker run --rm \
-    -v "$(pwd)/test/config/without-accounts/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'ls -1 /etc/opendkim/keys/localhost.localdomain/ | wc -l'
-  assert_success
-  assert_output 2
-  # Check keys for otherdomain.tld
-  # run docker run --rm \
-  #   -v "$(pwd)/test/config/without-accounts/opendkim":/etc/opendkim \
-  #   `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'ls -1 /etc/opendkim/keys/otherdomain.tld | wc -l'
-  # assert_success
-  # [ "$output" -eq 0 ]
-  # Check presence of tables and TrustedHosts
-  run docker run --rm \
-    -v "$(pwd)/test/config/without-accounts/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c "ls -1 /etc/opendkim | grep -E 'KeyTable|SigningTable|TrustedHosts|keys'|wc -l"
-  assert_success
-  assert_output 4
-}
-
-@test "checking opendkim: generator creates keys, tables and TrustedHosts without postfix-virtual.cf" {
-  rm -rf "$(pwd)/test/config/without-virtual" && mkdir -p "$(pwd)/test/config/without-virtual"
-  run docker run --rm \
-    -v "$(pwd)/test/config/without-virtual/":/tmp/docker-mailserver/ \
-    -v "$(pwd)/test/config/postfix-accounts.cf":/tmp/docker-mailserver/postfix-accounts.cf \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config | wc -l'
-  assert_success
-  assert_output 5
-  # Check keys for localhost.localdomain
-  run docker run --rm \
-    -v "$(pwd)/test/config/without-virtual/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'ls -1 /etc/opendkim/keys/localhost.localdomain/ | wc -l'
-  assert_success
-  assert_output 2
-  # Check keys for otherdomain.tld
-  run docker run --rm \
-    -v "$(pwd)/test/config/without-virtual/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'ls -1 /etc/opendkim/keys/otherdomain.tld | wc -l'
-  assert_success
-  assert_output 2
-  # Check presence of tables and TrustedHosts
-  run docker run --rm \
-    -v "$(pwd)/test/config/without-virtual/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c "ls -1 /etc/opendkim | grep -E 'KeyTable|SigningTable|TrustedHosts|keys'|wc -l"
-  assert_success
-  assert_output 4
-}
-
-@test "checking opendkim: generator creates keys, tables and TrustedHosts using domain name" {
-  rm -rf "$(pwd)/test/config/with-domain" && mkdir -p "$(pwd)/test/config/with-domain"
-  run docker run --rm \
-    -v "$(pwd)/test/config/with-domain/":/tmp/docker-mailserver/ \
-    -v "$(pwd)/test/config/postfix-accounts.cf":/tmp/docker-mailserver/postfix-accounts.cf \
-    -v "$(pwd)/test/config/postfix-virtual.cf":/tmp/docker-mailserver/postfix-virtual.cf \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-config | wc -l'
-  assert_success
-  assert_output 6
-  # Generate key using domain name
-  run docker run --rm \
-    -v "$(pwd)/test/config/with-domain/":/tmp/docker-mailserver/ \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'generate-dkim-domain testdomain.tld | wc -l'
-  assert_success
-  assert_output 1
-  # Check keys for localhost.localdomain
-  run docker run --rm \
-    -v "$(pwd)/test/config/with-domain/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'ls -1 /etc/opendkim/keys/localhost.localdomain/ | wc -l'
-  assert_success
-  assert_output 2
-  # Check keys for otherdomain.tld
-  run docker run --rm \
-    -v "$(pwd)/test/config/with-domain/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'ls -1 /etc/opendkim/keys/otherdomain.tld | wc -l'
-  assert_success
-  assert_output 2
-  # Check keys for testdomain.tld
-  run docker run --rm \
-    -v "$(pwd)/test/config/with-domain/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'ls -1 /etc/opendkim/keys/testdomain.tld | wc -l'
-  assert_success
-  assert_output 2
-  # Check presence of tables and TrustedHosts
-  run docker run --rm \
-    -v "$(pwd)/test/config/with-domain/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c "ls -1 /etc/opendkim | grep -E 'KeyTable|SigningTable|TrustedHosts|keys' | wc -l"
-  assert_success
-  assert_output 4
-  # Check valid entries actually present in KeyTable
-  run docker run --rm \
-    -v "$(pwd)/test/config/with-domain/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c \
-    "egrep 'localhost.localdomain|otherdomain.tld|localdomain2.com|testdomain.tld' /etc/opendkim/KeyTable | wc -l"
-  assert_success
-  assert_output 4
-  # Check valid entries actually present in SigningTable
-  run docker run --rm \
-    -v "$(pwd)/test/config/with-domain/opendkim":/etc/opendkim \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c \
-    "egrep 'localhost.localdomain|otherdomain.tld|localdomain2.com|testdomain.tld' /etc/opendkim/SigningTable | wc -l"
-  assert_success
-  assert_output 4
-}
-
-#
-# ssl
-#
-
-@test "checking ssl: generated default cert works correctly" {
-  run docker exec mail /bin/sh -c "timeout 1 openssl s_client -connect 0.0.0.0:587 -starttls smtp -CApath /etc/ssl/certs/ | grep 'Verify return code: 0 (ok)'"
-  assert_success
-}
-
-@test "checking ssl: lets-encrypt-x3-cross-signed.pem is installed" {
-  run docker exec mail grep 'BEGIN CERTIFICATE' /etc/ssl/certs/lets-encrypt-x3-cross-signed.pem
   assert_success
 }
 
@@ -687,20 +456,7 @@ EOF
   assert_success
 }
 
-@test "checking SRS: SRS_DOMAINNAME is used correctly" {
-  run docker exec mail_srs_domainname grep "SRS_DOMAIN=srs.my-domain.com" /etc/default/postsrsd
-  assert_success
-}
 
-@test "checking SRS: OVERRIDE_HOSTNAME is handled correctly" {
-  run docker exec mail_override_hostname grep "SRS_DOMAIN=my-domain.com" /etc/default/postsrsd
-  assert_success
-}
-
-@test "checking SRS: DOMAINNAME is handled correctly" {
-  run docker exec mail_domainname grep "SRS_DOMAIN=my-domain.com" /etc/default/postsrsd
-  assert_success
-}
 @test "checking SRS: fallback to hostname is handled correctly" {
   run docker exec mail grep "SRS_DOMAIN=my-domain.com" /etc/default/postsrsd
   assert_success
@@ -721,8 +477,9 @@ EOF
 }
 
 @test "checking amavis: VIRUSMAILS_DELETE_DELAY override works as expected" {
-  run docker run --rm -e VIRUSMAILS_DELETE_DELAY=2 `docker inspect --format '{{ .Config.Image }}' mail` /bin/bash -c 'echo $VIRUSMAILS_DELETE_DELAY | grep 2'
-  assert_success
+  # shellcheck disable=SC2016
+  run docker run --rm -e VIRUSMAILS_DELETE_DELAY=2 "${IMAGE_NAME:?}" /bin/bash -c 'echo "${VIRUSMAILS_DELETE_DELAY}"'
+  assert_output 2
 }
 
 @test "checking amavis: old virusmail is wipped by cron" {
@@ -849,7 +606,7 @@ EOF
 @test "checking accounts: user_without_domain creation should be rejected since user@domain format is required" {
   run docker exec mail /bin/sh -c "addmailuser user_without_domain mypassword"
   assert_failure
-  assert_output --partial "username must include the domain"
+  assert_output --partial "Username must include the domain"
 }
 
 @test "checking accounts: user3 should have been added to /tmp/docker-mailserver/postfix-accounts.cf" {
@@ -857,7 +614,7 @@ EOF
 
   run docker exec mail /bin/sh -c "grep '^user3@domain\.tld|' -i /tmp/docker-mailserver/postfix-accounts.cf"
   assert_success
-  [ ! -z "$output" ]
+  [[ -n ${output} ]]
 }
 
 @test "checking accounts: auser3 should have been added to /tmp/docker-mailserver/postfix-accounts.cf" {
@@ -865,7 +622,7 @@ EOF
 
   run docker exec mail /bin/sh -c "grep '^auser3@domain\.tld|' -i /tmp/docker-mailserver/postfix-accounts.cf"
   assert_success
-  [ ! -z "$output" ]
+  [[ -n ${output} ]]
 }
 
 @test "checking accounts: a.ser3 should have been added to /tmp/docker-mailserver/postfix-accounts.cf" {
@@ -873,7 +630,7 @@ EOF
 
   run docker exec mail /bin/sh -c "grep '^a\.ser3@domain\.tld|' -i /tmp/docker-mailserver/postfix-accounts.cf"
   assert_success
-  [ ! -z "$output" ]
+  [[ -n ${output} ]]
 }
 
 @test "checking accounts: user3 should have been removed from /tmp/docker-mailserver/postfix-accounts.cf but not auser3" {
@@ -881,141 +638,145 @@ EOF
 
   run docker exec mail /bin/sh -c "grep '^user3@domain\.tld' -i /tmp/docker-mailserver/postfix-accounts.cf"
   assert_failure
-  [ -z "$output" ]
+  [[ -z ${output} ]]
 
   run docker exec mail /bin/sh -c "grep '^auser3@domain\.tld' -i /tmp/docker-mailserver/postfix-accounts.cf"
   assert_success
-  [ ! -z "$output" ]
+  [[ -n ${output} ]]
 }
 
 @test "checking user updating password for user in /tmp/docker-mailserver/postfix-accounts.cf" {
   docker exec mail /bin/sh -c "addmailuser user4@domain.tld mypassword"
 
-  initialpass=$(run docker exec mail /bin/sh -c "grep '^user4@domain\.tld' -i /tmp/docker-mailserver/postfix-accounts.cf")
+  initialpass=$(docker exec mail /bin/sh -c "grep '^user4@domain\.tld' -i /tmp/docker-mailserver/postfix-accounts.cf")
   sleep 2
   docker exec mail /bin/sh -c "updatemailuser user4@domain.tld mynewpassword"
   sleep 2
-  changepass=$(run docker exec mail /bin/sh -c "grep '^user4@domain\.tld' -i /tmp/docker-mailserver/postfix-accounts.cf")
+  changepass=$(docker exec mail /bin/sh -c "grep '^user4@domain\.tld' -i /tmp/docker-mailserver/postfix-accounts.cf")
 
-  if [ initialpass != changepass ]; then
-    status="0"
-  else
-    status="1"
-  fi
+  [[ ${initialpass} != "${changepass}" ]]
 
   docker exec mail /bin/sh -c "delmailuser -y auser3@domain.tld"
 
   assert_success
 }
 
-@test "checking accounts: listmailuser" {
-  run docker exec mail /bin/sh -c "listmailuser | head -n 1"
+@test "checking accounts: listmailuser (quotas disabled)" {
+  run docker exec mail /bin/sh -c "echo 'ENABLE_QUOTAS=0' >> /etc/dms-settings && listmailuser | head -n 1"
   assert_success
-  assert_output 'user1@localhost.localdomain'
+  assert_output '* user1@localhost.localdomain'
+}
+
+@test "checking accounts: listmailuser (quotas enabled)" {
+  run docker exec mail /bin/sh -c "sed -i '/ENABLE_QUOTAS=0/d' /etc/dms-settings; listmailuser | head -n 1"
+  assert_success
+  assert_output '* user1@localhost.localdomain ( 12K / ~ ) [0%]'
 }
 
 @test "checking accounts: no error is generated when deleting a user if /tmp/docker-mailserver/postfix-accounts.cf is missing" {
   run docker run --rm \
-    -v "$(pwd)/test/config/without-accounts/":/tmp/docker-mailserver/ \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'delmailuser -y user3@domain.tld'
+    -v "$(duplicate_config_for_container without-accounts/ without-accounts-deleting-user)":/tmp/docker-mailserver/ \
+    "${IMAGE_NAME:?}" /bin/sh -c 'delmailuser -y user3@domain.tld'
   assert_success
-  [ -z "$output" ]
+  [[ -z ${output} ]]
 }
 
 @test "checking accounts: user3 should have been added to /tmp/docker-mailserver/postfix-accounts.cf even when that file does not exist" {
+  local PRIVATE_CONFIG
+  PRIVATE_CONFIG=$(duplicate_config_for_container without-accounts/ without-accounts_file_does_not_exist)
   run docker run --rm \
-    -v "$(pwd)/test/config/without-accounts/":/tmp/docker-mailserver/ \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'addmailuser user3@domain.tld mypassword'
+    -v "${PRIVATE_CONFIG}/without-accounts/":/tmp/docker-mailserver/ \
+    "${IMAGE_NAME:?}" /bin/sh -c 'addmailuser user3@domain.tld mypassword'
   assert_success
   run docker run --rm \
-    -v "$(pwd)/test/config/without-accounts/":/tmp/docker-mailserver/ \
-    `docker inspect --format '{{ .Config.Image }}' mail` /bin/sh -c 'grep user3@domain.tld -i /tmp/docker-mailserver/postfix-accounts.cf'
+    -v "${PRIVATE_CONFIG}/without-accounts/":/tmp/docker-mailserver/ \
+    "${IMAGE_NAME:?}" /bin/sh -c 'grep user3@domain.tld -i /tmp/docker-mailserver/postfix-accounts.cf'
   assert_success
-  [ ! -z "$output" ]
+  [[ -n ${output} ]]
 }
 
 
 @test "checking quota: setquota user must be existing" {
-    run docker exec mail /bin/sh -c "addmailuser quota_user@domain.tld mypassword"
-    assert_success
+  run docker exec mail /bin/sh -c "addmailuser quota_user@domain.tld mypassword"
+  assert_success
 
-    run docker exec mail /bin/sh -c "setquota quota_user 50M"
-    assert_failure
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 50M"
-    assert_success
+  run docker exec mail /bin/sh -c "setquota quota_user 50M"
+  assert_failure
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 50M"
+  assert_success
 
-    run docker exec mail /bin/sh -c "setquota username@fulldomain 50M"
-    assert_failure
+  run docker exec mail /bin/sh -c "setquota username@fulldomain 50M"
+  assert_failure
 
-    run docker exec mail /bin/sh -c "delmailuser -y quota_user@domain.tld"
-    assert_success
+  run docker exec mail /bin/sh -c "delmailuser -y quota_user@domain.tld"
+  assert_success
 }
 @test "checking quota: setquota <quota> must be well formatted" {
-    run docker exec mail /bin/sh -c "addmailuser quota_user@domain.tld mypassword"
-    assert_success
+  run docker exec mail /bin/sh -c "addmailuser quota_user@domain.tld mypassword"
+  assert_success
 
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 26GIGOTS"
-    assert_failure
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 123"
-    assert_failure
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld M"
-    assert_failure
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld -60M"
-    assert_failure
-
-
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10B"
-    assert_success
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10k"
-    assert_success
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10M"
-    assert_success
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10G"
-    assert_success
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10T"
-    assert_success
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 26GIGOTS"
+  assert_failure
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 123"
+  assert_failure
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld M"
+  assert_failure
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld -60M"
+  assert_failure
 
 
-    run docker exec mail /bin/sh -c "delmailuser -y quota_user@domain.tld"
-    assert_success
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10B"
+  assert_success
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10k"
+  assert_success
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10M"
+  assert_success
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10G"
+  assert_success
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10T"
+  assert_success
+
+
+  run docker exec mail /bin/sh -c "delmailuser -y quota_user@domain.tld"
+  assert_success
 }
 
 
 @test "checking quota: delquota user must be existing" {
-    run docker exec mail /bin/sh -c "addmailuser quota_user@domain.tld mypassword"
-    assert_success
+  run docker exec mail /bin/sh -c "addmailuser quota_user@domain.tld mypassword"
+  assert_success
 
-    run docker exec mail /bin/sh -c "delquota uota_user@domain.tld"
-    assert_failure
-    run docker exec mail /bin/sh -c "delquota quota_user"
-    assert_failure
-    run docker exec mail /bin/sh -c "delquota dontknowyou@domain.tld"
-    assert_failure
+  run docker exec mail /bin/sh -c "delquota uota_user@domain.tld"
+  assert_failure
+  run docker exec mail /bin/sh -c "delquota quota_user"
+  assert_failure
+  run docker exec mail /bin/sh -c "delquota dontknowyou@domain.tld"
+  assert_failure
 
-    run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10T"
-    assert_success
-    run docker exec mail /bin/sh -c "delquota quota_user@domain.tld"
-    assert_success
-    run docker exec mail /bin/sh -c "grep -i 'quota_user@domain.tld' /tmp/docker-mailserver/dovecot-quotas.cf"
-    assert_failure
+  run docker exec mail /bin/sh -c "setquota quota_user@domain.tld 10T"
+  assert_success
+  run docker exec mail /bin/sh -c "delquota quota_user@domain.tld"
+  assert_success
+  run docker exec mail /bin/sh -c "grep -i 'quota_user@domain.tld' /tmp/docker-mailserver/dovecot-quotas.cf"
+  assert_failure
 
-    run docker exec mail /bin/sh -c "delmailuser -y quota_user@domain.tld"
-    assert_success
+  run docker exec mail /bin/sh -c "delmailuser -y quota_user@domain.tld"
+  assert_success
 }
 @test "checking quota: delquota allow when no quota for existing user" {
-    run docker exec mail /bin/sh -c "addmailuser quota_user@domain.tld mypassword"
-    assert_success
+  run docker exec mail /bin/sh -c "addmailuser quota_user@domain.tld mypassword"
+  assert_success
 
-    run docker exec mail /bin/sh -c "grep -i 'quota_user@domain.tld' /tmp/docker-mailserver/dovecot-quotas.cf"
-    assert_failure
+  run docker exec mail /bin/sh -c "grep -i 'quota_user@domain.tld' /tmp/docker-mailserver/dovecot-quotas.cf"
+  assert_failure
 
-    run docker exec mail /bin/sh -c "delquota quota_user@domain.tld"
-    assert_success
-    run docker exec mail /bin/sh -c "delquota quota_user@domain.tld"
-    assert_success
+  run docker exec mail /bin/sh -c "delquota quota_user@domain.tld"
+  assert_success
+  run docker exec mail /bin/sh -c "delquota quota_user@domain.tld"
+  assert_success
 
-    run docker exec mail /bin/sh -c "delmailuser -y quota_user@domain.tld"
-    assert_success
+  run docker exec mail /bin/sh -c "delmailuser -y quota_user@domain.tld"
+  assert_success
 }
 
 @test "checking quota: dovecot quota present in postconf" {
@@ -1026,35 +787,35 @@ EOF
 
 @test "checking quota: dovecot mailbox max size must be equal to postfix mailbox max size" {
   postfix_mailbox_size=$(docker exec mail sh -c "postconf | grep -Po '(?<=mailbox_size_limit = )[0-9]+'")
-  run echo "$postfix_mailbox_size"
+  run echo "${postfix_mailbox_size}"
   refute_output ""
 
   # dovecot relies on virtual_mailbox_size by default
   postfix_virtual_mailbox_size=$(docker exec mail sh -c "postconf | grep -Po '(?<=virtual_mailbox_limit = )[0-9]+'")
-  assert_equal "$postfix_virtual_mailbox_size" "$postfix_mailbox_size"
+  assert_equal "${postfix_virtual_mailbox_size}" "${postfix_mailbox_size}"
 
-  postfix_mailbox_size_mb=$(($postfix_mailbox_size / 1000000))
+  postfix_mailbox_size_mb=$(( postfix_mailbox_size / 1000000))
 
   dovecot_mailbox_size_mb=$(docker exec mail sh -c "doveconf | grep  -oP '(?<=quota_rule \= \*\:storage=)[0-9]+'")
-  run echo "$dovecot_mailbox_size_mb"
+  run echo "${dovecot_mailbox_size_mb}"
   refute_output ""
 
-  assert_equal "$postfix_mailbox_size_mb" "$dovecot_mailbox_size_mb"
+  assert_equal "${postfix_mailbox_size_mb}" "${dovecot_mailbox_size_mb}"
 }
 
 
 @test "checking quota: dovecot message max size must be equal to postfix messsage max size" {
   postfix_message_size=$(docker exec mail sh -c "postconf | grep -Po '(?<=message_size_limit = )[0-9]+'")
-  run echo "$postfix_message_size"
+  run echo "${postfix_message_size}"
   refute_output ""
 
-  postfix_message_size_mb=$(($postfix_message_size / 1000000))
+  postfix_message_size_mb=$(( postfix_message_size / 1000000))
 
   dovecot_message_size_mb=$(docker exec mail sh -c "doveconf | grep  -oP '(?<=quota_max_mail_size = )[0-9]+'")
-  run echo "$dovecot_message_size_mb"
+  run echo "${dovecot_message_size_mb}"
   refute_output ""
 
-  assert_equal "$postfix_message_size_mb" "$dovecot_message_size_mb"
+  assert_equal "${postfix_message_size_mb}" "${dovecot_message_size_mb}"
 }
 
 @test "checking quota: quota directive is removed when mailbox is removed" {
@@ -1075,43 +836,24 @@ EOF
 }
 
 @test "checking quota: dovecot applies user quota" {
-  sleep 15 # wait until any other change has finished
+  wait_for_changes_to_be_detected_in_container mail
+
   run docker exec mail /bin/sh -c "doveadm quota get -u 'user1@localhost.localdomain' | grep 'User quota STORAGE'"
   assert_output --partial "-                         0"
 
-  # set a quota
-  originalChangesProcessed=$(count_processed_changes mail)
   run docker exec mail /bin/sh -c "setquota user1@localhost.localdomain 50M"
   assert_success
 
-  # wait until change detector has processed the change
-  count=0
-  while [ "${originalChangesProcessed}" = "$(count_processed_changes mail)" ]
-  do
-    ((count++)) && ((count==60)) && break
-    sleep 1
-  done
-  [ "${originalChangesProcessed}" != "$(count_processed_changes mail)" ]
-  assert_success
+  wait_for_changes_to_be_detected_in_container mail
 
   # wait until quota has been updated
   run repeat_until_success_or_timeout 20 sh -c "docker exec mail sh -c 'doveadm quota get -u user1@localhost.localdomain | grep -oP \"(User quota STORAGE\s+[0-9]+\s+)51200(.*)\"'"
   assert_success
 
-  # remove the quota
-  originalChangesProcessed=$(count_processed_changes mail)
   run docker exec mail /bin/sh -c "delquota user1@localhost.localdomain"
   assert_success
 
-  # wait until change detector has processed the change
-  count=0
-  while [ "${originalChangesProcessed}" = "$(count_processed_changes mail)" ]
-  do
-    ((count++)) && ((count==60)) && break
-    sleep 1
-  done
-  [ "${originalChangesProcessed}" != "$(count_processed_changes mail)" ]
-  assert_success
+  wait_for_changes_to_be_detected_in_container mail
 
   # wait until quota has been updated
   run repeat_until_success_or_timeout 20 sh -c "docker exec mail sh -c 'doveadm quota get -u user1@localhost.localdomain | grep -oP \"(User quota STORAGE\s+[0-9]+\s+)-(.*)\"'"
@@ -1119,22 +861,13 @@ EOF
 }
 
 @test "checking quota: warn message received when quota exceeded" {
-  sleep 15 # wait until any other change has finished
-
-  originalChangesProcessed=$(count_processed_changes mail)
+  wait_for_changes_to_be_detected_in_container mail
 
   # create user
   run docker exec mail /bin/sh -c "addmailuser quotauser@otherdomain.tld mypassword && setquota quotauser@otherdomain.tld 10k"
   assert_success
 
-  count=0
-  while [ "${originalChangesProcessed}" = "$(count_processed_changes mail)" ]
-  do
-    ((count++)) && ((count==60)) && break
-    sleep 1
-  done
-  [ "${originalChangesProcessed}" != "$(count_processed_changes mail)" ]
-  assert_success
+  wait_for_changes_to_be_detected_in_container mail
 
   # wait until quota has been updated
   run repeat_until_success_or_timeout 20 sh -c "docker exec mail sh -c 'doveadm quota get -u quotauser@otherdomain.tld | grep -oP \"(User quota STORAGE\s+[0-9]+\s+)10(.*)\"'"
@@ -1143,7 +876,7 @@ EOF
   # dovecot and postfix has been restarted
   wait_for_service mail postfix
   wait_for_service mail dovecot
-  sleep 5
+  sleep 10
 
   # send some big emails
   run docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/quota-exceeded.txt"
@@ -1152,10 +885,10 @@ EOF
   assert_success
   run docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/email-templates/quota-exceeded.txt"
   assert_success
-
   # check for quota warn message existence
   run repeat_until_success_or_timeout 20 sh -c "docker exec mail sh -c 'grep \"Subject: quota warning\" /var/mail/otherdomain.tld/quotauser/new/ -R'"
   assert_success
+
   run repeat_until_success_or_timeout 20 sh -c "docker logs mail | grep 'Quota exceeded (mailbox for user is full)'"
   assert_success
 
@@ -1192,57 +925,42 @@ EOF
   assert_output 1
 }
 
-
+# TODO investigate why this test fails
 @test "checking user login: predefined user can login" {
+  skip 'disabled as it fails randomly: https://github.com/docker-mailserver/docker-mailserver/pull/2177'
   run docker exec mail /bin/bash -c "doveadm auth test -x service=smtp pass@localhost.localdomain 'may be \\a \`p^a.*ssword' | grep 'passdb'"
   assert_output "passdb: pass@localhost.localdomain auth succeeded"
 }
 
-#
-# setup.sh
-#
+# -----------------------------------------------
+# --- setup.sh ----------------------------------
+# -----------------------------------------------
 
-# CLI interface
-@test "checking setup.sh: Without arguments: status 1, show help text" {
+@test "setup.sh :: exit with error when no arguments provided" {
   run ./setup.sh
   assert_failure
-  [ "${lines[0]}" = "Usage: ./setup.sh [-i IMAGE_NAME] [-c CONTAINER_NAME] <subcommand> <subcommand> [args]" ]
+  assert_line --index 0 --partial "The command '' is invalid."
 }
 
-@test "checking setup.sh: Wrong arguments" {
+@test "setup.sh :: exit with error when wrong arguments provided" {
   run ./setup.sh lol troll
   assert_failure
-  [ "${lines[0]}" = "Usage: ./setup.sh [-i IMAGE_NAME] [-c CONTAINER_NAME] <subcommand> <subcommand> [args]" ]
+  assert_line --index 0 --partial "The command 'lol troll' is invalid."
 }
 
-# email
 @test "checking setup.sh: setup.sh email add and login" {
   wait_for_service mail changedetector
   assert_success
 
-  originalChangesProcessed=$(count_processed_changes mail)
-
   run ./setup.sh -c mail email add setup_email_add@example.com test_password
   assert_success
 
-  value=$(cat ./test/config/postfix-accounts.cf | grep setup_email_add@example.com | awk -F '|' '{print $1}')
-  [ "$value" = "setup_email_add@example.com" ]
+  value=$(grep setup_email_add@example.com "$(private_config_path mail)/postfix-accounts.cf" | awk -F '|' '{print $1}')
+  [[ ${value} == "setup_email_add@example.com" ]]
   assert_success
 
-  # wait until change detector has processed the change
-  count=0
-  while [ "${originalChangesProcessed}" = "$(count_processed_changes mail)" ]
-  do
-    ((count++)) && ((count==60)) && break
-    sleep 1
-  done
+  wait_for_changes_to_be_detected_in_container mail
 
-  [ "${originalChangesProcessed}" != "$(count_processed_changes mail)" ]
-  assert_success
-
-  # Dovecot has been restarted, but this test often fails so presumably it may not be ready
-  # Add a short sleep to see if that helps to make the test more stable
-  # Alternatively we could login with a known good user to make sure that the service is up
   wait_for_service mail postfix
   wait_for_service mail dovecot
   sleep 5
@@ -1260,37 +978,35 @@ EOF
   run ./setup.sh -c mail email add lorem@impsum.org test_test
   assert_success
 
-  initialpass=$(cat ./test/config/postfix-accounts.cf | grep lorem@impsum.org | awk -F '|' '{print $2}')
-  [ "$initialpass" != "" ]
+  initialpass=$(grep lorem@impsum.org "$(private_config_path mail)/postfix-accounts.cf" | awk -F '|' '{print $2}')
+  [[ ${initialpass} != "" ]]
   assert_success
 
   run ./setup.sh -c mail email update lorem@impsum.org my password
   assert_success
 
-  updatepass=$(cat ./test/config/postfix-accounts.cf | grep lorem@impsum.org | awk -F '|' '{print $2}')
-  [ "$updatepass" != "" ]
-  assert_success
+  updatepass=$(grep lorem@impsum.org "$(private_config_path mail)/postfix-accounts.cf" | awk -F '|' '{print $2}')
+  [[ ${updatepass} != "" ]]
+  [[ ${initialpass} != "${updatepass}" ]]
 
-  [ "$initialpass" != "$updatepass" ]
-  assert_success
-
-  docker exec mail doveadm pw -t "$updatepass" -p 'my password' | grep 'verified'
+  docker exec mail doveadm pw -t "${updatepass}" -p 'my password' | grep 'verified'
   assert_success
 }
 
 @test "checking setup.sh: setup.sh email del" {
   run ./setup.sh -c mail email del -y lorem@impsum.org
   assert_success
-#
-#  TODO delmailuser does not work as expected.
-#  Its implementation is not functional, you cannot delete a user data
-#  directory in the running container by running a new docker container
-#  and not mounting the mail folders (persistance is broken).
-#  The add script is only adding the user to account file.
-#
-#  run docker exec mail ls /var/mail/impsum.org/lorem
-#  assert_failure
-  run grep lorem@impsum.org ./test/config/postfix-accounts.cf
+
+  # TODO
+  # delmailuser does not work as expected.
+  # Its implementation is not functional, you cannot delete a user data
+  # directory in the running container by running a new docker container
+  # and not mounting the mail folders (persistance is broken).
+  # The add script is only adding the user to account file.
+
+  #  run docker exec mail ls /var/mail/impsum.org/lorem
+  #  assert_failure
+  run grep lorem@impsum.org "$(private_config_path mail)/postfix-accounts.cf"
   assert_failure
 }
 
@@ -1317,163 +1033,141 @@ EOF
 
 # alias
 @test "checking setup.sh: setup.sh alias list" {
-  mkdir -p ./test/alias/config && echo "test@example.org test@forward.com" > ./test/alias/config/postfix-virtual.cf
-  run ./setup.sh -p ./test/alias/config alias list
+  run ./setup.sh alias list
   assert_success
+  assert_output --partial "alias1@localhost.localdomain user1@localhost.localdomain"
+  assert_output --partial "@localdomain2.com user1@localhost.localdomain"
 }
+
 @test "checking setup.sh: setup.sh alias add" {
-  mkdir -p ./test/alias/config && echo "" > ./test/alias/config/postfix-virtual.cf
-  ./setup.sh -p ./test/alias/config alias add alias@example.com target1@forward.com
-  ./setup.sh -p ./test/alias/config alias add alias@example.com target2@forward.com
+  ./setup.sh alias add alias@example.com target1@forward.com
+  ./setup.sh alias add alias@example.com target2@forward.com
+  ./setup.sh alias add alias2@example.org target3@forward.com
   sleep 5
-  run /bin/sh -c 'cat ./test/alias/config/postfix-virtual.cf | grep "alias@example.com target1@forward.com,target2@forward.com" | wc -l | grep 1'
+  run grep "alias@example.com target1@forward.com,target2@forward.com" "$(private_config_path mail)/postfix-virtual.cf"
   assert_success
 }
+
 @test "checking setup.sh: setup.sh alias del" {
-  # start with a1 -> t1,t2 and a2 -> t1
-  mkdir -p ./test/alias/config && echo -e 'alias1@example.org target1@forward.com,target2@forward.com\nalias2@example.org target1@forward.com' > ./test/alias/config/postfix-virtual.cf
-
-  # we remove a1 -> t1 ==> a1 -> t2 and a2 -> t1
-  ./setup.sh -p ./test/alias/config alias del alias1@example.org target1@forward.com
-  run grep "target1@forward.com" ./test/alias/config/postfix-virtual.cf
-  assert_output  --regexp "^alias2@example.org +target1@forward.com$"
-
-  run grep "target2@forward.com" ./test/alias/config/postfix-virtual.cf
-  assert_output  --regexp "^alias1@example.org +target2@forward.com$"
-
-  # we remove a1 -> t2 ==> a2 -> t1
-  ./setup.sh -p ./test/alias/config alias del alias1@example.org target2@forward.com
-  run grep "alias1@example.org" ./test/alias/config/postfix-virtual.cf
+  ./setup.sh alias del alias@example.com target1@forward.com
+  run grep "target1@forward.com" "$(private_config_path mail)/postfix-virtual.cf"
   assert_failure
 
-  run grep "alias2@example.org" ./test/alias/config/postfix-virtual.cf
+  run grep "target2@forward.com" "$(private_config_path mail)/postfix-virtual.cf"
+  assert_output "alias@example.com target2@forward.com"
+
+  ./setup.sh alias del alias@example.org target2@forward.com
+  run grep "alias@example.org" "$(private_config_path mail)/postfix-virtual.cf"
+  assert_failure
+
+  run grep "alias2@example.org" "$(private_config_path mail)/postfix-virtual.cf"
   assert_success
 
-  # we remove a2 -> t1 ==> empty
-  ./setup.sh -p ./test/alias/config alias del alias2@example.org target1@forward.com
-  run grep "alias2@example.org" ./test/alias/config/postfix-virtual.cf
+  ./setup.sh alias del alias2@example.org target3@forward.com
+  run grep "alias2@example.org" "$(private_config_path mail)/postfix-virtual.cf"
   assert_failure
 }
 
 # quota
 @test "checking setup.sh: setup.sh setquota" {
-  mkdir -p ./test/quota/config && echo "" > ./test/quota/config/dovecot-quotas.cf
+  run ./setup.sh email add quota_user@example.com test_password
+  run ./setup.sh email add quota_user2@example.com test_password
 
-  run ./setup.sh -p ./test/quota/config email add quota_user@example.com test_password
-  run ./setup.sh -p ./test/quota/config email add quota_user2@example.com test_password
-
-  run ./setup.sh -p ./test/quota/config quota set quota_user@example.com 12M
+  run ./setup.sh quota set quota_user@example.com 12M
   assert_success
-  run ./setup.sh -p ./test/quota/config quota set 51M quota_user@example.com
+  run ./setup.sh quota set 51M quota_user@example.com
   assert_failure
-  run ./setup.sh -p ./test/quota/config quota set unknown@domain.com 150M
+  run ./setup.sh quota set unknown@domain.com 150M
   assert_failure
 
-  run ./setup.sh -p ./test/quota/config quota set quota_user2 51M
+  run ./setup.sh quota set quota_user2 51M
   assert_failure
 
-  run /bin/sh -c 'cat ./test/quota/config/dovecot-quotas.cf | grep -E "^quota_user@example.com\:12M\$" | wc -l | grep 1'
+  run /bin/sh -c 'cat ./test/duplicate_configs/mail/dovecot-quotas.cf | grep -E "^quota_user@example.com\:12M\$" | wc -l | grep 1'
   assert_success
 
-  run ./setup.sh -p ./test/quota/config quota set quota_user@example.com 26M
+  run ./setup.sh quota set quota_user@example.com 26M
   assert_success
-  run /bin/sh -c 'cat ./test/quota/config/dovecot-quotas.cf | grep -E "^quota_user@example.com\:26M\$" | wc -l | grep 1'
+  run /bin/sh -c 'cat ./test/duplicate_configs/mail/dovecot-quotas.cf | grep -E "^quota_user@example.com\:26M\$" | wc -l | grep 1'
   assert_success
 
-  run grep "quota_user2@example.com" ./test/alias/config/dovecot-quotas.cf
+  run grep "quota_user2@example.com" ./test/duplicate_configs/mail/dovecot-quotas.cf
   assert_failure
 }
 
 @test "checking setup.sh: setup.sh delquota" {
-  mkdir -p ./test/quota/config && echo "" > ./test/quota/config/dovecot-quotas.cf
+  run ./setup.sh email add quota_user@example.com test_password
+  run ./setup.sh email add quota_user2@example.com test_password
 
-  run ./setup.sh -p ./test/quota/config email add quota_user@example.com test_password
-  run ./setup.sh -p ./test/quota/config email add quota_user2@example.com test_password
-
-  run ./setup.sh -p ./test/quota/config quota set quota_user@example.com 12M
+  run ./setup.sh quota set quota_user@example.com 12M
   assert_success
-  run /bin/sh -c 'cat ./test/quota/config/dovecot-quotas.cf | grep -E "^quota_user@example.com\:12M\$" | wc -l | grep 1'
+  run /bin/sh -c 'cat ./test/duplicate_configs/mail/dovecot-quotas.cf | grep -E "^quota_user@example.com\:12M\$" | wc -l | grep 1'
   assert_success
 
-
-  run ./setup.sh -p ./test/quota/config quota del unknown@domain.com
+  run ./setup.sh quota del unknown@domain.com
   assert_failure
-  run /bin/sh -c 'cat ./test/quota/config/dovecot-quotas.cf | grep -E "^quota_user@example.com\:12M\$" | wc -l | grep 1'
+  run /bin/sh -c 'cat ./test/duplicate_configs/mail/dovecot-quotas.cf | grep -E "^quota_user@example.com\:12M\$" | wc -l | grep 1'
   assert_success
 
-  run ./setup.sh -p ./test/quota/config quota del quota_user@example.com
+  run ./setup.sh quota del quota_user@example.com
   assert_success
-  run grep "quota_user@example.com" ./test/alias/config/dovecot-quotas.cf
+  run grep "quota_user@example.com" ./test/duplicate_configs/mail/dovecot-quotas.cf
   assert_failure
 }
 
-
-
-# config
-@test "checking setup.sh: setup.sh config dkim" {
-  run ./setup.sh -c mail config dkim
+@test "setup.sh :: setup.sh config dkim help correctly displayed" {
+  run ./setup.sh -c mail config dkim help
   assert_success
+  assert_line --index 3 --partial "    open-dkim - configure DomainKeys Identified Mail (DKIM)"
 }
-# TODO: To create a test generate-ssl-certificate must be non interactive
-#@test "checking setup.sh: setup.sh config ssl" {
-#  run ./setup.sh -c mail_ssl config ssl
-#  assert_success
-#}
 
 # debug
+
 @test "checking setup.sh: setup.sh debug fetchmail" {
   run ./setup.sh -c mail debug fetchmail
-  [ "$status" -eq 11 ]
-  [[ "$output" == *"fetchmail: normal termination, status 11"* ]]
+  assert_failure
+  assert_output --partial "fetchmail: normal termination, status 11"
 }
-@test "checking setup.sh: setup.sh debug inspect" {
-  run ./setup.sh -c mail debug inspect
-  assert_success
-  [ "${lines[0]}" = "Image: tvial/docker-mailserver:testing" ]
-  [ "${lines[1]}" = "Container: mail" ]
-}
+
 @test "checking setup.sh: setup.sh debug login ls" {
   run ./setup.sh -c mail debug login ls
   assert_success
 }
 
 @test "checking setup.sh: setup.sh relay add-domain" {
-  mkdir -p ./test/relay/config && echo -n > ./test/relay/config/postfix-relaymap.cf
-  ./setup.sh -p ./test/relay/config relay add-domain example1.org smtp.relay1.com 2525
-  ./setup.sh -p ./test/relay/config relay add-domain example2.org smtp.relay2.com
-  ./setup.sh -p ./test/relay/config relay add-domain example3.org smtp.relay3.com 2525
-  ./setup.sh -p ./test/relay/config relay add-domain example3.org smtp.relay.com 587
+  ./setup.sh relay add-domain example1.org smtp.relay1.com 2525
+  ./setup.sh relay add-domain example2.org smtp.relay2.com
+  ./setup.sh relay add-domain example3.org smtp.relay3.com 2525
+  ./setup.sh relay add-domain example3.org smtp.relay.com 587
 
   # check adding
-  run /bin/sh -c 'cat ./test/relay/config/postfix-relaymap.cf | grep -e "^@example1.org\s\+\[smtp.relay1.com\]:2525" | wc -l | grep 1'
+  run /bin/sh -c "cat $(private_config_path mail)/postfix-relaymap.cf | grep -e \"^@example1.org\s\+\[smtp.relay1.com\]:2525\" | wc -l | grep 1"
   assert_success
   # test default port
-  run /bin/sh -c 'cat ./test/relay/config/postfix-relaymap.cf | grep -e "^@example2.org\s\+\[smtp.relay2.com\]:25" | wc -l | grep 1'
+  run /bin/sh -c "cat $(private_config_path mail)/postfix-relaymap.cf | grep -e \"^@example2.org\s\+\[smtp.relay2.com\]:25\" | wc -l | grep 1"
   assert_success
   # test modifying
-  run /bin/sh -c 'cat ./test/relay/config/postfix-relaymap.cf | grep -e "^@example3.org\s\+\[smtp.relay.com\]:587" | wc -l | grep 1'
+  run /bin/sh -c "cat $(private_config_path mail)/postfix-relaymap.cf | grep -e \"^@example3.org\s\+\[smtp.relay.com\]:587\" | wc -l | grep 1"
   assert_success
 }
 
 @test "checking setup.sh: setup.sh relay add-auth" {
-  mkdir -p ./test/relay/config && echo -n > ./test/relay/config/postfix-sasl-password.cf
-  ./setup.sh -p ./test/relay/config relay add-auth example.org smtp_user smtp_pass
-  ./setup.sh -p ./test/relay/config relay add-auth example2.org smtp_user2 smtp_pass2
-  ./setup.sh -p ./test/relay/config relay add-auth example2.org smtp_user2 smtp_pass_new
+  ./setup.sh relay add-auth example.org smtp_user smtp_pass
+  ./setup.sh relay add-auth example2.org smtp_user2 smtp_pass2
+  ./setup.sh relay add-auth example2.org smtp_user2 smtp_pass_new
 
   # test adding
-  run /bin/sh -c 'cat ./test/relay/config/postfix-sasl-password.cf | grep -e "^@example.org\s\+smtp_user:smtp_pass" | wc -l | grep 1'
+  run /bin/sh -c "cat $(private_config_path mail)/postfix-sasl-password.cf | grep -e \"^@example.org\s\+smtp_user:smtp_pass\" | wc -l | grep 1"
   assert_success
   # test updating
-  run /bin/sh -c 'cat ./test/relay/config/postfix-sasl-password.cf | grep -e "^@example2.org\s\+smtp_user2:smtp_pass_new" | wc -l | grep 1'
+  run /bin/sh -c "cat $(private_config_path mail)/postfix-sasl-password.cf | grep -e \"^@example2.org\s\+smtp_user2:smtp_pass_new\" | wc -l | grep 1"
   assert_success
 }
 
 @test "checking setup.sh: setup.sh relay exclude-domain" {
-  mkdir -p ./test/relay/config && echo -n > ./test/relay/config/postfix-relaymap.cf
-  ./setup.sh -p ./test/relay/config relay exclude-domain example.org
+  ./setup.sh relay exclude-domain example.org
 
-  run /bin/sh -c 'cat ./test/relay/config/postfix-relaymap.cf | grep -e "^@example.org\s*$" | wc -l | grep 1'
+  run /bin/sh -c "cat $(private_config_path mail)/postfix-relaymap.cf | grep -e \"^@example.org\s*$\" | wc -l | grep 1"
   assert_success
 }
 
@@ -1486,19 +1180,16 @@ EOF
 @test "checking dovecot: postmaster address" {
   run docker exec mail /bin/sh -c "grep 'postmaster_address = postmaster@my-domain.com' /etc/dovecot/conf.d/15-lda.conf"
   assert_success
-
-  run docker exec mail_override_hostname /bin/sh -c "grep 'postmaster_address = postmaster@my-domain.com' /etc/dovecot/conf.d/15-lda.conf"
-  assert_success
 }
 
 @test "checking spoofing: rejects sender forging" {
   # checking rejection of spoofed sender
-  run docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/added-smtp-auth-spoofed.txt | grep 'Sender address rejected: not owned by user'"
-  assert_success
+  wait_for_smtp_port_in_container_to_respond mail
+  run docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/added-smtp-auth-spoofed.txt"
+  assert_output --partial 'Sender address rejected: not owned by user'
 }
 
 @test "checking spoofing: accepts sending as alias" {
-
   run docker exec mail /bin/sh -c "nc 0.0.0.0 25 < /tmp/docker-mailserver-test/auth/added-smtp-auth-spoofed-alias.txt | grep 'End data with'"
   assert_success
 }
@@ -1520,60 +1211,6 @@ EOF
   run docker exec mail grep "From: mailserver-report@mail.my-domain.com" /var/mail/localhost.localdomain/user1/new/ -R
   assert_failure
 }
-
-
-#
-# PCI compliance
-#
-
-# dovecot
-@test "checking dovecot: only A grade TLS ciphers are used" {
-  run docker run --rm -i --link mail:dovecot \
-    --entrypoint sh instrumentisto/nmap -c \
-      'nmap --script ssl-enum-ciphers -p 993 dovecot | grep "least strength: A"'
-  assert_success
-}
-
-@test "checking dovecot: nmap produces no warnings on TLS ciphers verifying" {
-  run docker run --rm -i --link mail:dovecot \
-    --entrypoint sh instrumentisto/nmap -c \
-      'nmap --script ssl-enum-ciphers -p 993 dovecot | grep "warnings" | wc -l'
-  assert_success
-  assert_output 0
-}
-
-# postfix submission TLS
-@test "checking postfix submission: only A grade TLS ciphers are used" {
-  run docker run --rm -i --link mail:postfix \
-    --entrypoint sh instrumentisto/nmap -c \
-      'nmap --script ssl-enum-ciphers -p 587 postfix | grep "least strength: A"'
-  assert_success
-}
-
-@test "checking postfix submission: nmap produces no warnings on TLS ciphers verifying" {
-  run docker run --rm -i --link mail:postfix \
-    --entrypoint sh instrumentisto/nmap -c \
-      'nmap --script ssl-enum-ciphers -p 587 postfix | grep "warnings" | wc -l'
-  assert_success
-  assert_output 0
-}
-
-# postfix smtps SSL
-@test "checking postfix smtps: only A grade TLS ciphers are used" {
-  run docker run --rm -i --link mail:postfix \
-    --entrypoint sh instrumentisto/nmap -c \
-      'nmap --script ssl-enum-ciphers -p 465 postfix | grep "least strength: A"'
-  assert_success
-}
-
-@test "checking postfix smtps: nmap produces no warnings on TLS ciphers verifying" {
-  run docker run --rm -i --link mail:postfix \
-    --entrypoint sh instrumentisto/nmap -c \
-      'nmap --script ssl-enum-ciphers -p 465 postfix | grep "warnings" | wc -l'
-  assert_success
-  assert_output 0
-}
-
 
 #
 # supervisor
@@ -1604,11 +1241,6 @@ EOF
   assert_success
 }
 
-@test "checking restart of process: clamav (clamav disabled by ENABLED_CLAMAV=0)" {
-  run docker exec mail_disabled_clamav_spamassassin /bin/bash -c "pkill -f clamd && sleep 10 && ps aux --forest | grep -v grep | grep '/usr/sbin/clamd'"
-  assert_failure
-}
-
 #
 # root mail delivery
 #
@@ -1618,11 +1250,6 @@ EOF
   assert_success
 }
 
-#
-# clean exit
-#
-
-@test "checking that the container stops cleanly" {
-  run docker stop -t 60 mail_override_hostname
-  assert_success
+@test "last" {
+  skip 'this test is only there to reliably mark the end for the teardown_file (test.bats finished)'
 }

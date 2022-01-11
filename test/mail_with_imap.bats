@@ -10,15 +10,17 @@ teardown() {
 }
 
 setup_file() {
+    local PRIVATE_CONFIG
+    PRIVATE_CONFIG="$(duplicate_config_for_container .)"
     docker run -d --name mail_with_imap \
-		-v "`pwd`/test/config":/tmp/docker-mailserver \
-		-v "`pwd`/test/test-files":/tmp/docker-mailserver-test:ro \
+		-v "${PRIVATE_CONFIG}":/tmp/docker-mailserver \
+		-v "$(pwd)/test/test-files":/tmp/docker-mailserver-test:ro \
 		-e ENABLE_SASLAUTHD=1 \
 		-e SASLAUTHD_MECHANISMS=rimap \
 		-e SASLAUTHD_MECH_OPTIONS=127.0.0.1 \
 		-e POSTMASTER_ADDRESS=postmaster@localhost.localdomain \
 		-e DMS_DEBUG=0 \
-		-h mail.my-domain.com -t ${NAME}
+		-h mail.my-domain.com -t "${NAME}"
     wait_for_smtp_port_in_container mail_with_imap
 }
 
