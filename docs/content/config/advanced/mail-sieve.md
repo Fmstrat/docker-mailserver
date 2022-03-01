@@ -61,6 +61,23 @@ pipe "external-program";
 
 For more examples or a detailed description of the Sieve language have a look at [the official site](http://sieve.info/examplescripts). Other resources are available on the internet where you can find several [examples](https://support.tigertech.net/sieve#sieve-example-rules-jmp).
 
+## Automatic Sorting Based on Subaddresses
+
+It is possible to sort subaddresses such as `user+mailing-lists@example.com` into a corresponding folder (here: `INBOX/Mailing-lists`) automatically.
+
+```sieve
+require ["envelope", "fileinto", "mailbox", "subaddress", "variables"];
+
+if envelope :detail :matches "to" "*" {
+	set :lower :upperfirst "tag" "${1}";
+	if mailboxexists "INBOX.${1}" {
+		fileinto "INBOX.${1}";
+	} else {
+		fileinto :create "INBOX.${tag}";
+	}
+}
+```
+
 ## Manage Sieve
 
 The [Manage Sieve](https://doc.dovecot.org/admin_manual/pigeonhole_managesieve_server/) extension allows users to modify their Sieve script by themselves. The authentication mechanisms are the same as for the main dovecot service. ManageSieve runs on port `4190` and needs to be enabled using the `ENABLE_MANAGESIEVE=1` environment variable.
@@ -83,4 +100,4 @@ All user defined sieve scripts that are managed by ManageSieve are stored in the
 The extension is known to work with the following ManageSieve clients:
 
 - **[Sieve Editor](https://github.com/thsmi/sieve)**  a portable standalone application based on the former Thunderbird plugin.
-- **[Kmail](https://kontact.kde.org/components/kmail.html)**  the mail client of [KDE](https://kde.org/)'s Kontact Suite.
+- **[Kmail](https://kontact.kde.org/components/kmail/)**  the mail client of [KDE](https://kde.org/)'s Kontact Suite.

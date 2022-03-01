@@ -343,20 +343,25 @@ Finally the logrotate interval **may** affect the period for generated reports. 
 - **0** => SpamAssassin is disabled
 - 1 => SpamAssassin is enabled
 
-**/!\\ Spam delivery:** when SpamAssassin is enabled, messages marked as spam WILL NOT BE DELIVERED.
-Use `SPAMASSASSIN_SPAM_TO_INBOX=1` for receiving spam messages.
-
 ##### SPAMASSASSIN_SPAM_TO_INBOX
 
-- **0** => Spam messages will be bounced (_rejected_) without any notification (_dangerous_).
-- 1 => Spam messages will be delivered to the inbox and tagged as spam using `SA_SPAM_SUBJECT`.
+- 0 => Spam messages will be bounced (_rejected_) without any notification (_dangerous_).
+- **1** => Spam messages will be delivered to the inbox and tagged as spam using `SA_SPAM_SUBJECT`.
+
+##### ENABLE_SPAMASSASSIN_KAM
+
+[KAM](https://mcgrail.com/template/projects#KAM1) is a 3rd party SpamAssassin ruleset, provided by the McGrail Foundation. If SpamAssassin is enabled, KAM can be used in addition to the default ruleset.
+
+- **0** => KAM disabled
+- 1 => KAM enabled
 
 ##### MOVE_SPAM_TO_JUNK
 
-- **1** => Spam messages will be delivered in the `Junk` folder.
-- 0 => Spam messages will be delivered in the mailbox.
-
+Spam messages can be moved in the Junk folder.
 Note: this setting needs `SPAMASSASSIN_SPAM_TO_INBOX=1`
+
+- 0 => Spam messages will be delivered in the mailbox.
+- **1** => Spam messages will be delivered in the `Junk` folder.
 
 ##### SA_TAG
 
@@ -418,7 +423,7 @@ Note: activate this only if you are confident in your bayes database for identif
 ##### FETCHMAIL_PARALLEL
 
   **0** => `fetchmail` runs with a single config file `/etc/fetchmailrc`
-  **1** => `/etc/fetchmailrc` is split per poll entry. For every poll entry a seperate fetchmail instance is started  to allow having multiple imap idle configurations defined.
+  **1** => `/etc/fetchmailrc` is split per poll entry. For every poll entry a separate fetchmail instance is started  to allow having multiple imap idle configurations defined.
 
 Note: The defaults of your fetchmailrc file need to be at the top of the file. Otherwise it won't be added correctly to all separate `fetchmail` instances.
 
