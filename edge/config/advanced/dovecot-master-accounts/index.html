@@ -12,20 +12,20 @@
         <meta name="author" content="docker-mailserver (Github Organization)">
       
       
-        <link rel="canonical" href="https://docker-mailserver.github.io/docker-mailserver/edge/config/advanced/mail-fetchmail/">
+        <link rel="canonical" href="https://docker-mailserver.github.io/docker-mailserver/edge/config/advanced/dovecot-master-accounts/">
       
       
-        <link rel="prev" href="../mail-sieve/">
+        <link rel="prev" href="../podman/">
       
       
-        <link rel="next" href="../mail-getmail/">
+        <link rel="next" href="../../../examples/tutorials/basic-installation/">
       
       <link rel="icon" href="../../../assets/logo/favicon-32x32.png">
       <meta name="generator" content="mkdocs-1.4.2, mkdocs-material-9.1.5">
     
     
       
-        <title>Advanced | Email Gathering with Fetchmail - Docker Mailserver</title>
+        <title>Advanced | Dovecot master accounts - Docker Mailserver</title>
       
     
     
@@ -79,7 +79,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#configuration" class="md-skip">
+        <a href="#introduction" class="md-skip">
           Skip to content
         </a>
       
@@ -115,7 +115,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Advanced | Email Gathering with Fetchmail
+              Advanced | Dovecot master accounts
             
           </span>
         </div>
@@ -895,82 +895,11 @@
               
   
   
-    
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          Email Gathering with Fetchmail
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../mail-fetchmail/" class="md-nav__link">
         Email Gathering with Fetchmail
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#configuration" class="md-nav__link">
-    Configuration
-  </a>
-  
-    <nav class="md-nav" aria-label="Configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#imap-configuration" class="md-nav__link">
-    IMAP Configuration
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pop3-configuration" class="md-nav__link">
-    POP3 Configuration
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#polling-interval" class="md-nav__link">
-    Polling Interval
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#debugging" class="md-nav__link">
-    Debugging
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1114,11 +1043,62 @@
               
   
   
+    
   
-    <li class="md-nav__item">
-      <a href="../dovecot-master-accounts/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          Dovecot Master Accounts
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         Dovecot Master Accounts
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#introduction" class="md-nav__link">
+    Introduction
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    Configuration
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging-in" class="md-nav__link">
+    Logging in
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1479,42 +1459,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#configuration" class="md-nav__link">
-    Configuration
+  <a href="#introduction" class="md-nav__link">
+    Introduction
   </a>
-  
-    <nav class="md-nav" aria-label="Configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#imap-configuration" class="md-nav__link">
-    IMAP Configuration
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#pop3-configuration" class="md-nav__link">
-    POP3 Configuration
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#polling-interval" class="md-nav__link">
-    Polling Interval
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#debugging" class="md-nav__link">
-    Debugging
+  <a href="#configuration" class="md-nav__link">
+    Configuration
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#logging-in" class="md-nav__link">
+    Logging in
   </a>
   
 </li>
@@ -1534,7 +1494,7 @@
                   
 
   
-    <a href="https://github.com/docker-mailserver/docker-mailserver/edit/master/docs/content/config/advanced/mail-fetchmail.md" title="Edit this page" class="md-content__button md-icon">
+    <a href="https://github.com/docker-mailserver/docker-mailserver/edit/master/docs/content/config/advanced/dovecot-master-accounts.md" title="Edit this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4v-2m10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1 2.1 2.1Z"/></svg>
     </a>
@@ -1543,106 +1503,24 @@
     
       
     
-    <a href="https://github.com/docker-mailserver/docker-mailserver/raw/master/docs/content/config/advanced/mail-fetchmail.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/docker-mailserver/docker-mailserver/raw/master/docs/content/config/advanced/dovecot-master-accounts.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.15 8.15 0 0 1-1.23-2Z"/></svg>
     </a>
   
 
 
-  <h1>Email Gathering with Fetchmail</h1>
+  <h1>Dovecot Master Accounts</h1>
 
-<p>To enable the <a href="https://www.fetchmail.info">fetchmail</a> service to retrieve e-mails set the environment variable <code>ENABLE_FETCHMAIL</code> to <code>1</code>. Your <code>compose.yaml</code> file should look like following snippet:</p>
-<div class="highlight"><pre><span></span><code><span class="nt">environment</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ENABLE_FETCHMAIL=1</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">FETCHMAIL_POLL=300</span>
-</code></pre></div>
-<p>Generate a file called <code>fetchmail.cf</code> and place it in the <code>docker-data/dms/config/</code> folder. Your DMS folder should look like this example:</p>
-<div class="highlight"><pre><span></span><code>├── docker-data/dms/config
-│   ├── dovecot.cf
-│   ├── fetchmail.cf
-│   ├── postfix-accounts.cf
-│   └── postfix-virtual.cf
-├── compose.yaml
-└── README.md
-</code></pre></div>
+<h2 id="introduction"><a class="toclink" href="#introduction">Introduction</a></h2>
+<p>A dovecot master account is able to login as any configured user. This is useful for administrative tasks like hot backups.</p>
 <h2 id="configuration"><a class="toclink" href="#configuration">Configuration</a></h2>
-<p>A detailed description of the configuration options can be found in the <a href="https://www.fetchmail.info/fetchmail-man.html">online version of the manual page</a>.</p>
-<h3 id="imap-configuration"><a class="toclink" href="#imap-configuration">IMAP Configuration</a></h3>
-<div class="admonition example">
-<p class="admonition-title">Example</p>
-<div class="highlight"><pre><span></span><code>poll &#39;imap.gmail.com&#39; proto imap
-  user &#39;username&#39;
-  pass &#39;secret&#39;
-  is &#39;user1@example.com&#39;
-  ssl
-</code></pre></div>
-</div>
-<h3 id="pop3-configuration"><a class="toclink" href="#pop3-configuration">POP3 Configuration</a></h3>
-<div class="admonition example">
-<p class="admonition-title">Example</p>
-<div class="highlight"><pre><span></span><code>poll &#39;pop3.gmail.com&#39; proto pop3
-  user &#39;username&#39;
-  pass &#39;secret&#39;
-  is &#39;user2@example.com&#39;
-  ssl
-</code></pre></div>
-</div>
-<div class="admonition caution">
-<p class="admonition-title">Caution</p>
-<p>Don’t forget the last line! (<em>eg: <code>is 'user1@example.com'</code></em>). After <code>is</code>, you have to specify an email address from the configuration file: <code>docker-data/dms/config/postfix-accounts.cf</code>.</p>
-</div>
-<p>More details how to configure fetchmail can be found in the <a href="https://www.fetchmail.info/fetchmail-man.html#31">fetchmail man page in the chapter “The run control file”</a>.</p>
-<h3 id="polling-interval"><a class="toclink" href="#polling-interval">Polling Interval</a></h3>
-<p>By default the fetchmail service searches every 5 minutes for new mails on your external mail accounts. You can override this default value by changing the ENV variable <code>FETCHMAIL_POLL</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="nt">environment</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">FETCHMAIL_POLL=60</span>
-</code></pre></div>
-<p>You must specify a numeric argument which is a polling interval in seconds. The example above polls every minute for new mails.</p>
-<h2 id="debugging"><a class="toclink" href="#debugging">Debugging</a></h2>
-<p>To debug your <code>fetchmail.cf</code> configuration run this command:</p>
-<div class="highlight"><pre><span></span><code>./setup.sh<span class="w"> </span>debug<span class="w"> </span>fetchmail
-</code></pre></div>
-<p>For more informations about the configuration script <code>setup.sh</code> <a href="../../setup.sh/">read the corresponding docs</a>.</p>
-<p>Here a sample output of <code>./setup.sh debug fetchmail</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="go">fetchmail: 6.3.26 querying outlook.office365.com (protocol POP3) at Mon Aug 29 22:11:09 2016: poll started</span>
-<span class="go">Trying to connect to 132.245.48.18/995...connected.</span>
-<span class="go">fetchmail: Server certificate:</span>
-<span class="go">fetchmail: Issuer Organization: Microsoft Corporation</span>
-<span class="go">fetchmail: Issuer CommonName: Microsoft IT SSL SHA2</span>
-<span class="go">fetchmail: Subject CommonName: outlook.com</span>
-<span class="go">fetchmail: Subject Alternative Name: outlook.com</span>
-<span class="go">fetchmail: Subject Alternative Name: *.outlook.com</span>
-<span class="go">fetchmail: Subject Alternative Name: office365.com</span>
-<span class="go">fetchmail: Subject Alternative Name: *.office365.com</span>
-<span class="go">fetchmail: Subject Alternative Name: *.live.com</span>
-<span class="go">fetchmail: Subject Alternative Name: *.internal.outlook.com</span>
-<span class="go">fetchmail: Subject Alternative Name: *.outlook.office365.com</span>
-<span class="go">fetchmail: Subject Alternative Name: outlook.office.com</span>
-<span class="go">fetchmail: Subject Alternative Name: attachment.outlook.office.net</span>
-<span class="go">fetchmail: Subject Alternative Name: attachment.outlook.officeppe.net</span>
-<span class="go">fetchmail: Subject Alternative Name: *.office.com</span>
-<span class="go">fetchmail: outlook.office365.com key fingerprint: 3A:A4:58:42:56:CD:BD:11:19:5B:CF:1E:85:16:8E:4D</span>
-<span class="go">fetchmail: POP3&lt; +OK The Microsoft Exchange POP3 service is ready. [SABFADEAUABSADAAMQBDAEEAMAAwADAANwAuAGUAdQByAHAAcgBkADAAMQAuAHAAcgBvAGQALgBlAHgAYwBoAGEAbgBnAGUAbABhAGIAcwAuAGMAbwBtAA==]</span>
-<span class="go">fetchmail: POP3&gt; CAPA</span>
-<span class="go">fetchmail: POP3&lt; +OK</span>
-<span class="go">fetchmail: POP3&lt; TOP</span>
-<span class="go">fetchmail: POP3&lt; UIDL</span>
-<span class="go">fetchmail: POP3&lt; SASL PLAIN</span>
-<span class="go">fetchmail: POP3&lt; USER</span>
-<span class="go">fetchmail: POP3&lt; .</span>
-<span class="go">fetchmail: POP3&gt; USER user1@outlook.com</span>
-<span class="go">fetchmail: POP3&lt; +OK</span>
-<span class="go">fetchmail: POP3&gt; PASS *</span>
-<span class="go">fetchmail: POP3&lt; +OK User successfully logged on.</span>
-<span class="go">fetchmail: POP3&gt; STAT</span>
-<span class="go">fetchmail: POP3&lt; +OK 0 0</span>
-<span class="go">fetchmail: No mail for user1@outlook.com at outlook.office365.com</span>
-<span class="go">fetchmail: POP3&gt; QUIT</span>
-<span class="go">fetchmail: POP3&lt; +OK Microsoft Exchange Server 2016 POP3 server signing off.</span>
-<span class="go">fetchmail: 6.3.26 querying outlook.office365.com (protocol POP3) at Mon Aug 29 22:11:11 2016: poll completed</span>
-<span class="go">fetchmail: normal termination, status 1</span>
-</code></pre></div>
+<p>It is possible to create, update, delete and list dovecot master accounts using <code>setup.sh</code>. See <code>setup.sh help</code> for usage.</p>
+<p>This feature is presently <a href="https://github.com/docker-mailserver/docker-mailserver/pull/2535">not supported with LDAP</a>.</p>
+<h2 id="logging-in"><a class="toclink" href="#logging-in">Logging in</a></h2>
+<p>Once a master account is configured, it is possible to connect to any users mailbox using this account. Log in over POP3/IMAP using the following credential scheme:</p>
+<p>Username: <code>&lt;EMAIL ADDRESS&gt;*&lt;MASTER ACCOUNT NAME&gt;</code></p>
+<p>Password: <code>&lt;MASTER ACCOUNT PASSWORD&gt;</code></p>
 
 
 
