@@ -1,151 +1,133 @@
-#! /bin/bash
+#!/bin/bash
+
+# shellcheck source=../scripts/helpers/index.sh
+source /usr/local/bin/helpers/index.sh
+
+if [[ -f /etc/dms-settings ]] && [[ $(_get_dms_env_value 'ENABLE_RSPAMD') -eq 1 ]]; then
+  /usr/local/bin/rspamd-dkim "${@}"
+  exit
+fi
 
 KEYSIZE=4096
 SELECTOR=mail
 DOMAINS=
 
-function __usage
-{
-  printf "\e[35mOPEN-DKIM\e[31m(\e[93m8\e[31m)
+function __usage() {
+  printf '%s' "${PURPLE}OPEN-DKIM${RED}(${YELLOW}8${RED})
 
-\e[38;5;214mNAME\e[39m
+${ORANGE}NAME${RESET}
     open-dkim - configure DomainKeys Identified Mail (DKIM)
 
-\e[38;5;214mSYNOPSIS\e[39m
-    ./setup.sh config dkim [ OPTIONS\e[31m...\e[39m ]
+${ORANGE}SYNOPSIS${RESET}
+    ./setup.sh config dkim [ OPTIONS${RED}...${RESET} ]
 
-\e[38;5;214mDESCRIPTION\e[39m
+${ORANGE}DESCRIPTION${RESET}
     Configures DKIM keys. OPTIONS can be used to configure a more complex setup.
     LDAP setups require these options.
 
-\e[38;5;214mOPTIONS\e[39m
-    \e[94mGeneric Program Information\e[39m
+${ORANGE}OPTIONS${RESET}
+    ${BLUE}Generic Program Information${RESET}
         help       Print the usage information.
 
-    \e[94mConfiguration adjustments\e[39m
-        keysize    Set the size of the keys to be generated. Possible are 1024, 2024 and 4096 (default).
-        selector   Set a manual selector (default is 'mail') for the key. (\e[96mATTENTION\e[39m: NOT IMPLEMENTED YET!)
+    ${BLUE}Configuration adjustments${RESET}
+        keysize    Set the size of the keys to be generated. Possible are 1024, 2048 and 4096 (default).
+        selector   Set a manual selector (default is 'mail') for the key. (${LCYAN}ATTENTION${RESET}: NOT IMPLEMENTED YET!)
         domain     Provide the domain(s) for which keys are to be generated.
 
-\e[38;5;214mEXAMPLES\e[39m
-    \e[37m./setup.sh config dkim keysize 2048\e[39m
+${ORANGE}EXAMPLES${RESET}
+    ${LWHITE}./setup.sh config dkim keysize 2048${RESET}
         Creates keys of length 2048 bit in a default setup where domains are obtained from
         your accounts.
 
-    \e[37m./setup.sh config dkim keysize 2048 selector 2021-dkim\e[39m
+    ${LWHITE}./setup.sh config dkim keysize 2048 selector 2021-dkim${RESET}
         Creates keys of length 2048 bit in a default setup where domains are obtained from
         your accounts. The DKIM selector used is '2021-dkim'.
 
-    \e[37m./setup.sh config dkim keysize 2048 selector 2021-dkim domain 'whoami.com,whoareyou.org'\e[39m
+    ${LWHITE}./setup.sh config dkim keysize 2048 selector 2021-dkim domain 'whoami.com,whoareyou.org'${RESET}
         Appropriate for an LDAP setup. Creates keys of length 2048 bit in a default setup
         where domains are obtained from your accounts. The DKIM selector used is '2021-dkim'.
         The domains for which DKIM keys are generated are 'whoami.com' and 'whoareyou.org'.
 
-\e[38;5;214mEXIT STATUS\e[39m
+${ORANGE}EXIT STATUS${RESET}
     Exit status is 0 if command was successful. If wrong arguments are provided or arguments contain
     errors, the script will exit early with exit status 2.
 
 "
 }
 
-[[ ${1:-} == 'help' ]] && { __usage ; exit 0 ; }
+_require_n_parameters_or_print_usage 0 "${@}"
 
-while [[ ${#} -gt 0 ]]
-do
-  case ${1} in
-    keysize )
-      if [[ -n ${2+'set'} ]]
-      then
+while [[ ${#} -gt 0 ]]; do
+  case "${1}" in
+    ( 'keysize' )
+      if [[ -n ${2+set} ]]; then
         KEYSIZE="${2}"
         shift
         shift
       else
-        echo "No keysize provided after 'keysize' argument. Aborting." >&2
-        exit 2
+        _exit_with_error "No keysize provided after 'keysize' argument"
       fi
       ;;
 
-    selector )
-      if [[ -n ${2+'set'} ]]
-      then
+    ( 'selector' )
+      if [[ -n ${2+set} ]]; then
         # shellcheck disable=SC2034
         SELECTOR="${2}"
         shift
         shift
       else
-        echo "No selector provided after 'selector' argument. Aborting." >&2
-        exit 2
+        _exit_with_error "No selector provided after 'selector' argument"
       fi
       ;;
 
-    domain )
-      if [[ -n ${2+'set'} ]]
-      then
+    ( 'domain' )
+      if [[ -n ${2+set} ]]; then
         DOMAINS="${2}"
         shift
         shift
       else
-        echo "No domain(s) provided after 'domain' argument. Aborting." >&2
-        exit 2
+        _exit_with_error "No domain(s) provided after 'domain' argument"
       fi
       ;;
 
-    * )
+    ( * )
       __usage
-      echo -e "\nUnknown options ${1} ${2:-}. Aborting." >&2
-      exit 2
+      _exit_with_error "Unknown options '${1}' ${2:+and \'${2}\'}"
       ;;
 
   esac
 done
 
-touch /tmp/vhost.dkim.tmp
+DATABASE_VHOST='/tmp/vhost.dkim'
+# Prepare a file with one domain per line:
+function _generate_domains_config() {
+  local TMP_VHOST='/tmp/vhost.dkim.tmp'
 
-if [[ -z ${DOMAINS} ]]
-then
-  # getting domains FROM mail accounts
-  if [[ -f /tmp/docker-mailserver/postfix-accounts.cf ]]
-  then
-    # shellcheck disable=SC2034
-    while IFS=$'|' read -r LOGIN PASS
-    do
-      DOMAIN=$(echo "${LOGIN}" | cut -d @ -f2)
-      echo "${DOMAIN}" >>/tmp/vhost.dkim.tmp
-    done < <(grep -v "^\s*$\|^\s*\#" /tmp/docker-mailserver/postfix-accounts.cf || true)
+  # Generate the default vhost (equivalent to /etc/postfix/vhost),
+  # unless CLI arg DOMAINS provided an alternative list to use instead:
+  if [[ -z ${DOMAINS} ]]; then
+    _obtain_hostname_and_domainname
+    # uses TMP_VHOST:
+    _vhost_collect_postfix_domains
+  else
+    tr ',' '\n' <<< "${DOMAINS}" >"${TMP_VHOST}"
   fi
 
-  # getting domains FROM mail aliases
-  if [[ -f /tmp/docker-mailserver/postfix-virtual.cf ]]
-  then
-    # shellcheck disable=SC2034
-    while read -r FROM TO
-    do
-      UNAME=$(echo "${FROM}" | cut -d @ -f1)
-      DOMAIN=$(echo "${FROM}" | cut -d @ -f2)
+  # uses DATABASE_VHOST + TMP_VHOST:
+  _create_vhost
+}
 
-      [[ ${UNAME} != "${DOMAIN}" ]] && echo "${DOMAIN}" >>/tmp/vhost.dkim.tmp
-    done < <(grep -v "^\s*$\|^\s*\#" /tmp/docker-mailserver/postfix-virtual.cf || true)
-  fi
-else
-  tr ',' '\n' <<< "${DOMAINS}" > /tmp/vhost.dkim.tmp
-fi
-
-sort < /tmp/vhost.dkim.tmp | uniq >/tmp/vhost
-rm /tmp/vhost.dkim.tmp
-
-if [[ ! -s /tmp/vhost ]]
-then
-  echo "No entries found, no keys to make."
+_generate_domains_config
+if [[ ! -s ${DATABASE_VHOST} ]]; then
+  _log 'warn' 'No entries found, no keys to make'
   exit 0
 fi
 
-while read -r DKIM_DOMAIN
-do
+while read -r DKIM_DOMAIN; do
   mkdir -p "/tmp/docker-mailserver/opendkim/keys/${DKIM_DOMAIN}"
 
-  if [[ ! -f "/tmp/docker-mailserver/opendkim/keys/${DKIM_DOMAIN}/${SELECTOR}.private" ]]
-  then
-    echo "Creating DKIM private key /tmp/docker-mailserver/opendkim/keys/${DKIM_DOMAIN}/${SELECTOR}.private"
+  if [[ ! -f "/tmp/docker-mailserver/opendkim/keys/${DKIM_DOMAIN}/${SELECTOR}.private" ]]; then
+    _log 'info' "Creating DKIM private key '/tmp/docker-mailserver/opendkim/keys/${DKIM_DOMAIN}/${SELECTOR}.private'"
 
     opendkim-genkey \
       --bits="${KEYSIZE}" \
@@ -157,35 +139,30 @@ do
 
   # write to KeyTable if necessary
   KEYTABLEENTRY="${SELECTOR}._domainkey.${DKIM_DOMAIN} ${DKIM_DOMAIN}:${SELECTOR}:/etc/opendkim/keys/${DKIM_DOMAIN}/${SELECTOR}.private"
-  if [[ ! -f "/tmp/docker-mailserver/opendkim/KeyTable" ]]
-  then
-    echo "Creating DKIM KeyTable"
+  if [[ ! -f "/tmp/docker-mailserver/opendkim/KeyTable" ]]; then
+    _log 'debug' 'Creating DKIM KeyTable'
     echo "${KEYTABLEENTRY}" >/tmp/docker-mailserver/opendkim/KeyTable
   else
-    if ! grep -q "${KEYTABLEENTRY}" "/tmp/docker-mailserver/opendkim/KeyTable"
-    then
+    if ! grep -q "${KEYTABLEENTRY}" "/tmp/docker-mailserver/opendkim/KeyTable"; then
       echo "${KEYTABLEENTRY}" >>/tmp/docker-mailserver/opendkim/KeyTable
     fi
   fi
 
   # write to SigningTable if necessary
   SIGNINGTABLEENTRY="*@${DKIM_DOMAIN} ${SELECTOR}._domainkey.${DKIM_DOMAIN}"
-  if [[ ! -f /tmp/docker-mailserver/opendkim/SigningTable ]]
-  then
-    echo "Creating DKIM SigningTable"
+  if [[ ! -f /tmp/docker-mailserver/opendkim/SigningTable ]]; then
+    _log 'debug' 'Creating DKIM SigningTable'
     echo "*@${DKIM_DOMAIN} ${SELECTOR}._domainkey.${DKIM_DOMAIN}" >/tmp/docker-mailserver/opendkim/SigningTable
   else
-    if ! grep -q "${SIGNINGTABLEENTRY}" /tmp/docker-mailserver/opendkim/SigningTable
-    then
+    if ! grep -q "${SIGNINGTABLEENTRY}" /tmp/docker-mailserver/opendkim/SigningTable; then
       echo "${SIGNINGTABLEENTRY}" >>/tmp/docker-mailserver/opendkim/SigningTable
     fi
   fi
-done < <(grep -vE '^(\s*$|#)' /tmp/vhost)
+done < <(_get_valid_lines_from_file "${DATABASE_VHOST}")
 
 # create TrustedHosts if missing
-if [[ -d /tmp/docker-mailserver/opendkim ]] && [[ ! -f /tmp/docker-mailserver/opendkim/TrustedHosts ]]
-then
-  echo "Creating DKIM TrustedHosts"
+if [[ -d /tmp/docker-mailserver/opendkim ]] && [[ ! -f /tmp/docker-mailserver/opendkim/TrustedHosts ]]; then
+  _log 'debug' 'Creating DKIM TrustedHosts'
   echo "127.0.0.1" >/tmp/docker-mailserver/opendkim/TrustedHosts
   echo "localhost" >>/tmp/docker-mailserver/opendkim/TrustedHosts
 fi

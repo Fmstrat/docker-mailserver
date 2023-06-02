@@ -2,52 +2,21 @@
 ###  General  ###################################
 #################################################
 
-.DS_Store
 .env
-config/opendkim/
+docs/site/
+docker-data/
 
 #################################################
 ###  IDEs  ######################################
 #################################################
 
-.idea
-.vscode
-
-
-#################################################
-###  Linting Tools  #############################
-#################################################
-
-tools/
+.idea/
+.vscode/
 
 #################################################
 ###  Tests  #####################################
 #################################################
 
-test/config/empty/
+test/duplicate_configs/
+test/config/dovecot-masters.cf
 test/config/postfix-accounts.cf
-test/config/letsencrypt/mail.my-domain.com/combined.pem
-test/config/dovecot-lmtp/userdb
-test/config/key*
-test/config/opendkim/keys/domain.tld/
-test/config/opendkim/keys/example.com/
-test/config/opendkim/keys/localdomain2.com/
-test/config/postfix-aliases.cf
-test/config/postfix-receive-access.cf
-test/config/postfix-receive-access.cfe
-test/config/postfix-send-access.cf
-test/config/postfix-send-access.cfe
-test/config/relay-hosts/chksum
-test/config/relay-hosts/postfix-aliases.cf
-test/config/without-virtual/
-test/config/with-domain/
-test/onedir
-test/duplicate_configs
-test/alias
-test/quota
-test/relay
-
-config.bak
-testconfig.bak
-
-docs/site

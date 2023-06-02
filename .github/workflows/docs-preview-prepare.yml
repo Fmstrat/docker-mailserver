@@ -17,16 +17,19 @@ concurrency:
 # `pull_request` workflow is unreliable alone: Non-collaborator contributions lack access to secrets for security reasons.
 # A separate workflow (docs-preview-deploy.yml) handles the deploy after the potentially untrusted code is first run in this workflow.
 # See: https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+permissions:
+  contents: read
+
 jobs:
   prepare-preview:
     name: 'Build Preview'
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     env:
       BUILD_DIR: docs/site
       NETLIFY_SITE_PREFIX: pullrequest-${{ github.event.pull_request.number }}
       NETLIFY_SITE_NAME: dms-doc-previews
     steps:
-      - uses: actions/checkout@v2.4.0
+      - uses: actions/checkout@v3
 
       - name: 'Build with mkdocs-material via Docker'
         working-directory: docs
@@ -70,7 +73,7 @@ jobs:
           tar --zstd -cf artifact.tar.zst pr.env ${{ env.BUILD_DIR }}
 
       - name: 'Upload artifact for workflow transfer'
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: preview-build
           path: artifact.tar.zst

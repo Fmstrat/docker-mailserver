@@ -4,7 +4,7 @@ title: 'Advanced | LDAP Authentication'
 
 ## Introduction
 
-Getting started with ldap and `docker-mailserver` we need to take 3 parts in account:
+Getting started with ldap and DMS we need to take 3 parts in account:
 
 - `postfix` for incoming & outgoing email
 - `dovecot` for accessing mailboxes
@@ -34,13 +34,15 @@ Those variables contain the LDAP lookup filters for postfix, using `%s` as the p
     A really simple `LDAP_QUERY_FILTER` configuration, using only the _user filter_ and allowing only `admin@*` to spoof any sender addresses.
 
     ```yaml
-    - ENABLE_LDAP=1
+    - ENABLE_LDAP=1 # with the :edge tag, use ACCOUNT_PROVISIONER
+    - LDAP_START_TLS=yes
+    - ACCOUNT_PROVISIONER=LDAP
     - LDAP_SERVER_HOST=ldap.example.org
     - LDAP_SEARCH_BASE=dc=example,dc=org"
     - LDAP_BIND_DN=cn=admin,dc=example,dc=org
     - LDAP_BIND_PW=mypassword
     - SPOOF_PROTECTION=1
-    
+
     - LDAP_QUERY_FILTER_DOMAIN=(mail=*@%s)
     - LDAP_QUERY_FILTER_USER=(mail=%s)
     - LDAP_QUERY_FILTER_ALIAS=(|) # doesn't match anything
@@ -128,7 +130,7 @@ To enable LDAP over StartTLS (on port 389), you need to set the following enviro
 
 ## Active Directory Configurations (Tested with Samba4 AD Implementation)
 
-In addition to LDAP explanation above, when Docker Mailserver is intended to be used with Active Directory (or the equivelant implementations like Samba4 AD DC) the following points should be taken into consideration:
+In addition to LDAP explanation above, when Docker Mailserver is intended to be used with Active Directory (or the equivalent implementations like Samba4 AD DC) the following points should be taken into consideration:
 
 - Samba4 Active Directory requires a **secure connection** to the domain controller (DC), either via SSL/TLS (LDAPS) or via StartTLS.
 - The username equivalent in Active Directory is: `sAMAccountName`.
@@ -138,7 +140,7 @@ In addition to LDAP explanation above, when Docker Mailserver is intended to be 
 
 The configuration shown to get the Group to work is from [here](https://doc.zarafa.com/trunk/Administrator_Manual/en-US/html/_MTAIntegration.html) and [here](https://kb.kopano.io/display/WIKI/Postfix).
 
-```
+```bash
 # user-patches.sh
 
 ...
@@ -149,7 +151,7 @@ grep -q '^special_result_attribute = member$' /etc/postfix/ldap-groups.cf || ech
 
 - In `/etc/ldap/ldap.conf`, if the `TLS_REQCERT` is `demand` / `hard` (default), the CA certificate used to verify the LDAP server certificate must be recognized as a trusted CA. This can be done by volume mounting the `ca.crt` file and updating the trust store via a `user-patches.sh` script:
 
-```
+```bash
 # user-patches.sh
 
 ...
@@ -160,7 +162,7 @@ update-ca-certificates
 
 The changes on the configurations necessary to work with Active Directory (**only changes are listed, the rest of the LDAP configuration can be taken from the other examples** shown in this documentation):
 
-```
+```yaml
 # If StartTLS is the chosen method to establish a secure connection with Active Directory.
 - LDAP_START_TLS=yes
 - SASLAUTHD_LDAP_START_TLS=yes
@@ -187,13 +189,11 @@ The changes on the configurations necessary to work with Active Directory (**onl
 ???+ example "Basic Setup"
 
     ```yaml
-    version: '3.8'
     services:
       mailserver:
-        image: docker.io/mailserver/docker-mailserver:latest
+        image: ghcr.io/docker-mailserver/docker-mailserver:latest
         container_name: mailserver
-        hostname: mail
-        domainname: example.com
+        hostname: mail.example.com
 
         ports:
           - "25:25"
@@ -215,7 +215,8 @@ The changes on the configurations necessary to work with Active Directory (**onl
           - ENABLE_POSTGREY=1
 
           # >>> Postfix LDAP Integration
-          - ENABLE_LDAP=1
+          - ENABLE_LDAP=1 # with the :edge tag, use ACCOUNT_PROVISIONER
+          - ACCOUNT_PROVISIONER=LDAP
           - LDAP_SERVER_HOST=ldap.example.org
           - LDAP_BIND_DN=cn=admin,ou=users,dc=example,dc=org
           - LDAP_BIND_PW=mypassword
@@ -240,8 +241,6 @@ The changes on the configurations necessary to work with Active Directory (**onl
           - SASLAUTHD_LDAP_FILTER=(&(mail=%U@example.org)(objectClass=inetOrgPerson))
           # <<< SASL LDAP Authentication
 
-          - ONE_DIR=1
-          - DMS_DEBUG=0
           - SSL_TYPE=letsencrypt
           - PERMIT_DOCKER=host
 
@@ -252,14 +251,11 @@ The changes on the configurations necessary to work with Active Directory (**onl
 ??? example "Kopano / Zarafa"
 
     ```yaml
-    version: '3.8'
-
     services:
       mailserver:
-        image: docker.io/mailserver/docker-mailserver:latest
+        image: ghcr.io/docker-mailserver/docker-mailserver:latest
         container_name: mailserver
-        hostname: mail
-        domainname: example.com
+        hostname: mail.example.com
 
         ports:
           - "25:25"
@@ -288,7 +284,8 @@ The changes on the configurations necessary to work with Active Directory (**onl
           # <<< SASL Authentication
 
           # >>> Postfix Ldap Integration
-          - ENABLE_LDAP=1
+          - ENABLE_LDAP=1 # with the :edge tag, use ACCOUNT_PROVISIONER
+          - ACCOUNT_PROVISIONER=LDAP
           - LDAP_SERVER_HOST=<yourLdapContainer/yourLdapServer>
           - LDAP_SEARCH_BASE=dc=mydomain,dc=loc
           - LDAP_BIND_DN=cn=Administrator,cn=Users,dc=mydomain,dc=loc
@@ -300,12 +297,9 @@ The changes on the configurations necessary to work with Active Directory (**onl
           # <<< Postfix Ldap Integration
 
           # >>> Kopano Integration
-          - ENABLE_POSTFIX_VIRTUAL_TRANSPORT=1
           - POSTFIX_DAGENT=lmtp:kopano:2003
           # <<< Kopano Integration
 
-          - ONE_DIR=1
-          - DMS_DEBUG=0
           - SSL_TYPE=letsencrypt
           - PERMIT_DOCKER=host
 

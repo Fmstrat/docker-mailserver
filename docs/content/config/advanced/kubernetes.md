@@ -4,11 +4,13 @@ title: 'Advanced | Kubernetes'
 
 ## Introduction
 
-Kubernetes (also known by its abbreviation K8s) is a production-grade orchestrating tool for containers. This article describes how to deploy `docker-mailserver` to K8s. K8s differs from Docker especially when it comes to separation of concerns: Whereas with Docker Compose, you can fit everything in one file, with K8s, the information is split. This may seem (too) verbose, but actually provides a clear structure with more features and scalability. We are going to have a look at how to deploy one instance of `docker-mailserver` to your cluster.
+This article describes how to deploy DMS to Kubernetes. Please note that there is also a [Helm chart] available.
 
-We assume basic knowledge about K8s from the reader. If you're not familiar with K8s, we highly recommend starting with something less complex, like Docker Compose.
+!!! attention "Requirements"
 
-!!! warning "About Support for K8s"
+    We assume basic knowledge about Kubernetes from the reader. Moreover, we assume the reader to have a basic understanding of mail servers. Ideally, the reader has deployed DMS before in an easier setup with Docker (Compose).
+
+!!! warning "About Support for Kubernetes"
 
     Please note that Kubernetes **is not** officially supported and we do not build images specifically designed for it. When opening an issue, please remember that only Docker & Docker Compose are officially supported.
 
@@ -20,7 +22,6 @@ We assume basic knowledge about K8s from the reader. If you're not familiar with
 
 We want to provide the basic configuration in the form of environment variables with a `ConfigMap`. Note that this is just an example configuration; tune the `ConfigMap` to your needs.
 
-
 ```yaml
 ---
 apiVersion: v1
@@ -29,7 +30,7 @@ kind: ConfigMap
 metadata:
   name: mailserver.environment
 
-immutable: true # turn off during development
+immutable: false
 
 data:
   TLS_LEVEL: modern
@@ -40,7 +41,6 @@ data:
   UPDATE_CHECK_INTERVAL: 10d
   POSTFIX_INET_PROTOCOLS: ipv4
   ONE_DIR: '1'
-  DMS_DEBUG: '0'
   ENABLE_CLAMAV: '1'
   ENABLE_POSTGREY: '0'
   ENABLE_FAIL2BAN: '1'
@@ -51,9 +51,14 @@ data:
   ENABLE_SPAMASSASSIN: '1'
   SUPERVISOR_LOGLEVEL: warn
   SPAMASSASSIN_SPAM_TO_INBOX: '1'
+
+  # here, we provide an example for the SSL configuration
+  SSL_TYPE: manual
+  SSL_CERT_PATH: /secrets/ssl/rsa/tls.crt
+  SSL_KEY_PATH: /secrets/ssl/rsa/tls.key
 ```
 
-We can also make use of user-provided configuration files, e.g. `user-patches.sh`, `postfix-accounts.cf` and more, to adjust `docker-mailserver` to our likings. We encourage you to have a look at [Kustomize][kustomize] for creating `ConfigMap`s from multiple files, but for now, we will provide a simple, hand-written example. This example is absolutely minimal and only goes to show what can be done.
+We can also make use of user-provided configuration files, e.g. `user-patches.sh`, `postfix-accounts.cf` and more, to adjust DMS to our likings. We encourage you to have a look at [Kustomize][kustomize] for creating `ConfigMap`s from multiple files, but for now, we will provide a simple, hand-written example. This example is absolutely minimal and only goes to show what can be done.
 
 ```yaml
 ---
@@ -69,9 +74,15 @@ data:
     other@example.com|{SHA512-CRYPT}$6$someOtherHashValueHere
 ```
 
+!!! attention "Static Configuration"
+
+    With the configuration shown above, you can **not** dynamically add accounts as the configuration file mounted into the mail server can not be written to.
+
+    Use persistent volumes for production deployments.
+
 ### Persistence
 
-Thereafter, we need persistence for our data.
+Thereafter, we need persistence for our data. Make sure you have a storage provisioner and that you choose the correct `storageClassName`.
 
 ```yaml
 ---
@@ -94,7 +105,7 @@ spec:
 
 A `Service` is required for getting the traffic to the pod itself. The service is somewhat crucial. Its configuration determines whether the original IP from the sender will be kept. [More about this further down below](#exposing-your-mail-server-to-the-outside-world).
 
-The configuration you're seeing does keep the original IP, but you will not be able to scale this way. We have chosen to go this route in this case because we think most K8s users will only want to have one instance anyway, and users that need high availability know how to do it anyways.
+The configuration you're seeing does keep the original IP, but you will not be able to scale this way. We have chosen to go this route in this case because we think most Kubernetes users will only want to have one instance.
 
 ```yaml
 ---
@@ -108,7 +119,6 @@ metadata:
 
 spec:
   type: LoadBalancer
-  externalTrafficPolicy: Local
 
   selector:
     app: mailserver
@@ -139,7 +149,7 @@ spec:
 
 ### Deployments
 
-Last but not least, the `Deployment` becomes the most complex component. It instructs Kubernetes how to run the docker-mailserver container and how to apply your ConfigMaps and persisted storage. Additionally, we can set options to enforce runtime security here.
+Last but not least, the `Deployment` becomes the most complex component. It instructs Kubernetes how to run the DMS container and how to apply your `ConfigMaps`, persisted storage, etc. Additionally, we can set options to enforce runtime security here.
 
 ```yaml
 ---
@@ -176,7 +186,7 @@ spec:
       hostname: mail
       containers:
         - name: mailserver
-          image: docker.io/mailserver/docker-mailserver:latest
+          image: ghcr.io/docker-mailserver/docker-mailserver:latest
           imagePullPolicy: IfNotPresent
 
           securityContext:
@@ -201,7 +211,6 @@ spec:
                 - NET_BIND_SERVICE
                 # miscellaneous  capabilities
                 - SYS_CHROOT
-                - SYS_PTRACE
                 - KILL
               drop: [ALL]
             seccompProfile:
@@ -239,6 +248,11 @@ spec:
               subPath: log
               readOnly: false
 
+            # certificates
+            - name: certificates-rsa
+              mountPath: /secrets/ssl/rsa/
+              readOnly: true
+
             # other
             - name: tmp-files
               mountPath: /tmp
@@ -274,28 +288,67 @@ spec:
           persistentVolumeClaim:
             claimName: data
 
+        # certificates
+        - name: certificates-rsa
+          secret:
+            secretName: mail-tls-certificate-rsa
+            items:
+              - key: tls.key
+                path: tls.key
+              - key: tls.crt
+                path: tls.crt
+
         # other
         - name: tmp-files
           emptyDir: {}
 ```
 
-### Sensitive Data
+### Certificates - An Example
 
-By now, `docker-mailserver` starts, but does not really work for long (or at all), because we're lacking certificates. The [TLS docs page][docs-tls] provides guidance for various approaches.
+In this example, we use [`cert-manager`][cert-manager] to supply RSA certificates. You can also supply RSA certificates as fallback certificates, which DMS supports out of the box with `SSL_ALT_CERT_PATH` and `SSL_ALT_KEY_PATH`, and provide ECDSA as the proper certificates.
+
+```yaml
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+
+metadata:
+  name: mail-tls-certificate-rsa
+
+spec:
+  secretName: mail-tls-certificate-rsa
+  isCA: false
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048
+  dnsNames: [mail.example.com]
+  issuerRef:
+    name: mail-issuer
+    kind: Issuer
+```
+
+!!! attention
+
+    You will need to have [`cert-manager`][cert-manager] configured. Especially the issue will need to be configured. Since we do not know how you want or need your certificates to be supplied, we do not provide more configuration here. The documentation for [`cert-manager`][cert-manager] is excellent.
+
+### Sensitive Data
 
 !!! attention "Sensitive Data"
 
     For storing OpenDKIM keys, TLS certificates or any sort of sensitive data, you should be using `Secret`s. You can mount secrets like `ConfigMap`s and use them the same way.
 
-## Exposing your Mail-Server to the Outside World
+The [TLS docs page][docs-tls] provides guidance when it comes to certificates and transport layer security. Always provide sensitive information vai `Secrets`.
 
-The more difficult part with K8s is to expose a deployed `docker-mailserver` to the outside world. K8s provides multiple ways for doing that; each has downsides and complexity. The major problem with exposing `docker-mailserver` to outside world in K8s is to [preserve the real client IP][k8s-service-source-ip]. The real client IP is required by `docker-mailserver` for performing IP-based SPF checks and spam checks. If you do not require SPF checks for incoming mails, you may disable them in your [Postfix configuration][docs-postfix] by dropping the line that states: `check_policy_service unix:private/policyd-spf`.
+## Exposing your Mail Server to the Outside World
 
-The easiest approach was covered above, using `#!yaml externalTrafficPolicy: Local`, which disables the service proxy, but makes the service local as well (which does not scale). This approach only works when you are given the correct (that is, a public and routable) IP address by a load balancer (like MetalLB). In this sense, the approach above is similar to the next example below. We want to provide you with a few alternatives too. **But** we also want to communicate the idea of another simple method: you could use a load-balancer without an external IP and DNAT the network traffic to the mail-server. After all, this does not interfere with SPF checks because it keeps the origin IP address. If no dedicated external IP address is available, you could try the latter approach, if one is available, use the former.
+The more difficult part with Kubernetes is to expose a deployed DMS to the outside world. Kubernetes provides multiple ways for doing that; each has downsides and complexity. The major problem with exposing DMS to outside world in Kubernetes is to [preserve the real client IP][Kubernetes-service-source-ip]. The real client IP is required by DMS for performing IP-based SPF checks and spam checks. If you do not require SPF checks for incoming mails, you may disable them in your [Postfix configuration][docs-postfix] by dropping the line that states: `check_policy_service unix:private/policyd-spf`.
+
+The easiest approach was covered above, using `#!yaml externalTrafficPolicy: Local`, which disables the service proxy, but makes the service local as well (which does not scale). This approach only works when you are given the correct (that is, a public and routable) IP address by a load balancer (like MetalLB). In this sense, the approach above is similar to the next example below. We want to provide you with a few alternatives too. **But** we also want to communicate the idea of another simple method: you could use a load-balancer without an external IP and DNAT the network traffic to the mail server. After all, this does not interfere with SPF checks because it keeps the origin IP address. If no dedicated external IP address is available, you could try the latter approach, if one is available, use the former.
 
 ### External IPs Service
 
-The simplest way is to expose `docker-mailserver` as a [Service][k8s-network-service] with [external IPs][k8s-network-external-ip]. This is very similar to the approach taken above. Here, an external IP is given to the service directly by you. With the approach above, you tell your load-balancer to do this.
+The simplest way is to expose DMS as a [Service][Kubernetes-network-service] with [external IPs][Kubernetes-network-external-ip]. This is very similar to the approach taken above. Here, an external IP is given to the service directly by you. With the approach above, you tell your load-balancer to do this.
 
 ```yaml
 ---
@@ -327,7 +380,7 @@ This approach
 
 ### Proxy port to Service
 
-The [proxy pod][k8s-proxy-service] helps to avoid the necessity of specifying external IPs explicitly. This comes at the cost of complexity; you must deploy a proxy pod on each [Node][k8s-nodes] you want to expose `docker-mailserver` on.
+The [proxy pod][Kubernetes-proxy-service] helps to avoid the necessity of specifying external IPs explicitly. This comes at the cost of complexity; you must deploy a proxy pod on each [Node][Kubernetes-nodes] you want to expose DMS on.
 
 This approach
 
@@ -335,7 +388,7 @@ This approach
 
 ### Bind to concrete Node and use host network
 
-One way to preserve the real client IP is to use `hostPort` and `hostNetwork: true`. This comes at the cost of availability; you can reach `docker-mailserver` from the outside world only via IPs of [Node][k8s-nodes] where `docker-mailserver` is deployed.
+One way to preserve the real client IP is to use `hostPort` and `hostNetwork: true`. This comes at the cost of availability; you can reach DMS from the outside world only via IPs of [Node][Kubernetes-nodes] where DMS is deployed.
 
 ```yaml
 ---
@@ -348,7 +401,7 @@ metadata:
 # ...
     spec:
       hostNetwork: true
-    
+
     # ...
       containers:
         # ...
@@ -367,16 +420,16 @@ metadata:
 
 With this approach,
 
-- it is not possible to access `docker-mailserver` via other cluster Nodes, only via the Node `docker-mailserver` was deployed at.
+- it is not possible to access DMS via other cluster Nodes, only via the Node DMS was deployed at.
 - every Port within the Container is exposed on the Host side.
 
 ### Proxy Port to Service via PROXY Protocol
 
-This way is ideologically the same as [using a proxy pod](#proxy-port-to-service), but instead of a separate proxy pod, you configure your ingress to proxy TCP traffic to the `docker-mailserver` pod using the PROXY protocol, which preserves the real client IP.
+This way is ideologically the same as [using a proxy pod](#proxy-port-to-service), but instead of a separate proxy pod, you configure your ingress to proxy TCP traffic to the DMS pod using the PROXY protocol, which preserves the real client IP.
 
 #### Configure your Ingress
 
-With an [NGINX ingress controller][k8s-nginx], set `externalTrafficPolicy: Local` for its service, and add the following to the TCP services config map (as described [here][k8s-nginx-expose]):
+With an [NGINX ingress controller][Kubernetes-nginx], set `externalTrafficPolicy: Local` for its service, and add the following to the TCP services config map (as described [here][Kubernetes-nginx-expose]):
 
 ```yaml
 25:  "mailserver/mailserver:25::PROXY"
@@ -407,7 +460,7 @@ Then, configure both [Postfix][docs-postfix] and [Dovecot][docs-dovecot] to expe
       postfix-master.cf: |
         smtp/inet/postscreen_upstream_proxy_protocol=haproxy
         submission/inet/smtpd_upstream_proxy_protocol=haproxy
-        smtps/inet/smtpd_upstream_proxy_protocol=haproxy
+        submissions/inet/smtpd_upstream_proxy_protocol=haproxy
       dovecot.cf: |
         # Assuming your ingress controller is bound to 10.0.0.0/8
         haproxy_trusted_networks = 10.0.0.0/8, 127.0.0.0/8
@@ -448,17 +501,19 @@ Then, configure both [Postfix][docs-postfix] and [Dovecot][docs-dovecot] to expe
 
 With this approach,
 
-- it is not possible to access `docker-mailserver` via cluster-DNS, as the PROXY protocol is required for incoming connections.
+- it is not possible to access DMS via cluster-DNS, as the PROXY protocol is required for incoming connections.
 
+[Helm chart]: https://github.com/docker-mailserver/docker-mailserver-helm
 [kustomize]: https://kustomize.io/
+[cert-manager]: https://cert-manager.io/docs/
 [docs-tls]: ../security/ssl.md
 [docs-dovecot]: ./override-defaults/dovecot.md
 [docs-postfix]: ./override-defaults/postfix.md
 [dockerhub-haproxy]: https://hub.docker.com/_/haproxy
-[k8s-nginx]: https://kubernetes.github.io/ingress-nginx
-[k8s-nginx-expose]: https://kubernetes.github.io/ingress-nginx/user-guide/exposing-tcp-udp-services
-[k8s-network-service]: https://kubernetes.io/docs/concepts/services-networking/service
-[k8s-network-external-ip]: https://kubernetes.io/docs/concepts/services-networking/service/#external-ips
-[k8s-nodes]: https://kubernetes.io/docs/concepts/architecture/nodes
-[k8s-proxy-service]: https://github.com/kubernetes/contrib/tree/master/for-demos/proxy-to-service
-[k8s-service-source-ip]: https://kubernetes.io/docs/tutorials/services/source-ip
+[Kubernetes-nginx]: https://kubernetes.github.io/ingress-nginx
+[Kubernetes-nginx-expose]: https://kubernetes.github.io/ingress-nginx/user-guide/exposing-tcp-udp-services
+[Kubernetes-network-service]: https://kubernetes.io/docs/concepts/services-networking/service
+[Kubernetes-network-external-ip]: https://kubernetes.io/docs/concepts/services-networking/service/#external-ips
+[Kubernetes-nodes]: https://kubernetes.io/docs/concepts/architecture/nodes
+[Kubernetes-proxy-service]: https://github.com/kubernetes/contrib/tree/master/for-demos/proxy-to-service
+[Kubernetes-service-source-ip]: https://kubernetes.io/docs/tutorials/services/source-ip

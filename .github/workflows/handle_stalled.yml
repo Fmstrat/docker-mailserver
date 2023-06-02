@@ -4,12 +4,18 @@ on:
   schedule:
     - cron: "0 1 * * *"
 
+permissions:
+  contents: read
+
 jobs:
   stale:
-    runs-on: ubuntu-20.04
+    permissions:
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-22.04
     steps:
       - name: Close stale issues
-        uses: actions/stale@v4
+        uses: actions/stale@v8
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           days-before-stale: 20

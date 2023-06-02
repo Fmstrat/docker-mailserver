@@ -1,35 +1,25 @@
-name: "Lint"
+name: Lint
 
 on:
   pull_request:
-    branches: [ "*" ]
   push:
-    branches:
-      - master
+    branches: [ master ]
+
+permissions:
+  contents: read
 
 jobs:
   lint:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v2.3.4
-        with:
-          submodules: recursive
+        uses: actions/checkout@v3
 
       - name: Hadolint
-        run: |
-          make hadolint
-        env:
-          HADOLINT_VERSION: 2.4.1
+        run: make hadolint
 
       - name: ShellCheck
-        run: |
-          make shellcheck
-        env:
-          SHELLCHECK_VERSION: 0.8.0
+        run: make shellcheck
 
       - name: ECLint
-        run: |
-          make eclint
-        env:
-          ECLINT_VERSION: 2.3.5
+        run: make eclint
