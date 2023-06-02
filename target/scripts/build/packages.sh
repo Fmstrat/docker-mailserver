@@ -75,6 +75,7 @@ function _install_packages() {
   POSTFIX_PACKAGES=(
     pflogsumm postgrey postfix-ldap
     postfix-pcre postfix-policyd-spf-python postsrsd
+    postfix-mysql
   )
 
   MAIL_PROGRAMS_PACKAGES=(
@@ -97,6 +98,7 @@ function _install_dovecot() {
     dovecot-core dovecot-imapd
     dovecot-ldap dovecot-lmtpd dovecot-managesieved
     dovecot-pop3d dovecot-sieve dovecot-solr
+    dovecot-mysql
   )
 
   if [[ ${DOVECOT_COMMUNITY_REPO} -eq 1 ]]; then

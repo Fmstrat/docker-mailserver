@@ -30,9 +30,6 @@ COPY target/scripts/helpers/log.sh /usr/local/bin/helpers/log.sh
 
 RUN /bin/bash /build/packages.sh && rm -r /build
 
-# Custom
-RUN apt-get install -y postfix-mysql dovecot-mysql
-
 
 
 # -----------------------------------------------
