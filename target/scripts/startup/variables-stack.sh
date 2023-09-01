@@ -14,8 +14,7 @@ function _early_variables_setup() {
 # completely with a single version.
 function __environment_variables_backwards_compatibility() {
   if [[ ${ENABLE_LDAP:-0} -eq 1 ]]; then
-    _log 'warn' "'ENABLE_LDAP=1' is deprecated (and will be removed in v13.0.0) => use 'ACCOUNT_PROVISIONER=LDAP' instead"
-    ACCOUNT_PROVISIONER='LDAP'
+    _log 'error' "'ENABLE_LDAP=1' has been changed to 'ACCOUNT_PROVISIONER=LDAP' since DMS v13"
   fi
 
   # TODO this can be uncommented in a PR handling the HOSTNAME/DOMAINNAME issue
@@ -46,11 +45,13 @@ function __environment_variables_general_setup() {
   VARS[CLAMAV_MESSAGE_SIZE_LIMIT]="${CLAMAV_MESSAGE_SIZE_LIMIT:=25M}"
   VARS[FAIL2BAN_BLOCKTYPE]="${FAIL2BAN_BLOCKTYPE:=drop}"
   VARS[MOVE_SPAM_TO_JUNK]="${MOVE_SPAM_TO_JUNK:=1}"
+  VARS[MARK_SPAM_AS_READ]="${MARK_SPAM_AS_READ:=0}"
   VARS[POSTGREY_AUTO_WHITELIST_CLIENTS]="${POSTGREY_AUTO_WHITELIST_CLIENTS:=5}"
   VARS[POSTGREY_DELAY]="${POSTGREY_DELAY:=300}"
   VARS[POSTGREY_MAX_AGE]="${POSTGREY_MAX_AGE:=35}"
   VARS[POSTGREY_TEXT]="${POSTGREY_TEXT:=Delayed by Postgrey}"
   VARS[POSTSCREEN_ACTION]="${POSTSCREEN_ACTION:=enforce}"
+  VARS[RSPAMD_CHECK_AUTHENTICATED]="${RSPAMD_CHECK_AUTHENTICATED:=0}"
   VARS[RSPAMD_GREYLISTING]="${RSPAMD_GREYLISTING:=0}"
   VARS[RSPAMD_HFILTER]="${RSPAMD_HFILTER:=1}"
   VARS[RSPAMD_HFILTER_HOSTNAME_UNKNOWN_SCORE]="${RSPAMD_HFILTER_HOSTNAME_UNKNOWN_SCORE:=6}"

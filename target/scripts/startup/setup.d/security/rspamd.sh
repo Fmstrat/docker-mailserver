@@ -14,6 +14,7 @@ function _setup_rspamd() {
     __rspamd__setup_learning
     __rspamd__setup_greylisting
     __rspamd__setup_hfilter_group
+    __rspamd__setup_check_authenticated
     __rspamd__handle_user_modules_adjustments # must run last
 
     __rspamd__log 'trace' '----------  Setup finished  ----------'
@@ -137,7 +138,7 @@ function __rspamd__setup_postfix() {
 
   postconf 'rspamd_milter = inet:localhost:11332'
   # shellcheck disable=SC2016
-  sed -i -E 's|^(smtpd_milters =.*)|\1 \$rspamd_milter|g' /etc/postfix/main.cf
+  _add_to_or_update_postfix_main 'smtpd_milters' '$rspamd_milter'
 }
 
 # If ClamAV is enabled, we will integrate it into Rspamd.
@@ -179,6 +180,7 @@ function __rspamd__setup_default_modules() {
     metric_exporter
   )
 
+  local MODULE
   for MODULE in "${DISABLE_MODULES[@]}"; do
     __rspamd__helper__enable_disable_module "${MODULE}" 'false'
   done
@@ -250,7 +252,8 @@ function __rspamd__setup_hfilter_group() {
   if _env_var_expect_zero_or_one 'RSPAMD_HFILTER' && [[ ${RSPAMD_HFILTER} -eq 1 ]]; then
     __rspamd__log 'debug' 'Hfilter (group) module is enabled'
     # Check if we received a number first
-    if _env_var_expect_integer 'RSPAMD_HFILTER_HOSTNAME_UNKNOWN_SCORE' && [[ ${RSPAMD_HFILTER_HOSTNAME_UNKNOWN_SCORE} -ne 6 ]]; then
+    if _env_var_expect_integer 'RSPAMD_HFILTER_HOSTNAME_UNKNOWN_SCORE' \
+    && [[ ${RSPAMD_HFILTER_HOSTNAME_UNKNOWN_SCORE} -ne 6 ]]; then
       __rspamd__log 'trace' "Adjusting score for 'HFILTER_HOSTNAME_UNKNOWN' in Hfilter group module to ${RSPAMD_HFILTER_HOSTNAME_UNKNOWN_SCORE}"
       sed -i -E \
         "s|(.*score =).*(# __TAG__HFILTER_HOSTNAME_UNKNOWN)|\1 ${RSPAMD_HFILTER_HOSTNAME_UNKNOWN_SCORE}; \2|g" \
@@ -264,6 +267,20 @@ function __rspamd__setup_hfilter_group() {
   fi
 }
 
+function __rspamd__setup_check_authenticated() {
+  local MODULE_FILE="${RSPAMD_LOCAL_D}/settings.conf"
+  if _env_var_expect_zero_or_one 'RSPAMD_CHECK_AUTHENTICATED' \
+  && [[ ${RSPAMD_CHECK_AUTHENTICATED} -eq 0 ]]
+  then
+    __rspamd__log 'debug' 'Content checks for authenticated users are disabled'
+  else
+    __rspamd__log 'debug' 'Enabling content checks for authenticated users'
+    sed -i -E \
+      '/DMS::SED_TAG::1::START/{:a;N;/DMS::SED_TAG::1::END/!ba};/authenticated/d' \
+      "${MODULE_FILE}"
+  fi
+}
+
 # Parses `RSPAMD_CUSTOM_COMMANDS_FILE` and executed the directives given by the file.
 # To get a detailed explanation of the commands and how the file works, visit
 # https://docker-mailserver.github.io/docker-mailserver/edge/config/security/rspamd/#with-the-help-of-a-custom-file
@@ -273,7 +290,7 @@ function __rspamd__handle_user_modules_adjustments() {
   #
   # @param ${1} = file name in ${RSPAMD_OVERRIDE_D}/
   # @param ${2} = module name as it should appear in the log
-  # @patam ${3} = option name in the module
+  # @param ${3} = option name in the module
   # @param ${4} = value of the option
   #
   # ## Note
@@ -317,7 +334,6 @@ function __rspamd__handle_user_modules_adjustments() {
 
     while read -r COMMAND ARGUMENT1 ARGUMENT2 ARGUMENT3; do
       case "${COMMAND}" in
-
         ('disable-module')
           __rspamd__helper__enable_disable_module "${ARGUMENT1}" 'false' 'override'
           ;;
@@ -351,7 +367,6 @@ function __rspamd__handle_user_modules_adjustments() {
           __rspamd__log 'warn' "Command '${COMMAND}' is invalid"
           continue
           ;;
-
       esac
     done < <(_get_valid_lines_from_file "${RSPAMD_CUSTOM_COMMANDS_FILE}")
   fi
