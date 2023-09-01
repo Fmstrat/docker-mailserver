@@ -12,13 +12,13 @@
         <meta name="author" content="docker-mailserver (Github Organization)">
       
       
-        <link rel="canonical" href="https://docker-mailserver.github.io/docker-mailserver/edge/config/security/fail2ban/">
+        <link rel="canonical" href="https://docker-mailserver.github.io/docker-mailserver/edge/examples/use-cases/ios-mail-push-support/">
       
       
-        <link rel="prev" href="../ssl/">
+        <link rel="prev" href="../imap-folders/">
       
       
-        <link rel="next" href="../mail_crypt/">
+        <link rel="next" href="../../../faq/">
       
       
       <link rel="icon" href="../../../assets/logo/favicon-32x32.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>Security | Fail2Ban - Docker Mailserver</title>
+        <title>Advanced | iOS Mail Push Support - Docker Mailserver</title>
       
     
     
@@ -83,7 +83,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#configuration" class="md-skip">
+        <a href="#introduction" class="md-skip">
           Skip to content
         </a>
       
@@ -120,7 +120,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Security | Fail2Ban
+              Advanced | iOS Mail Push Support
             
           </span>
         </div>
@@ -273,13 +273,11 @@
         
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
-        <a href="../../environment/" class="md-tabs__link">
+      <li class="md-tabs__item">
+        <a href="../../../config/environment/" class="md-tabs__link">
           
   
   Configuration
@@ -293,17 +291,21 @@
         
   
   
+    
+  
   
     
     
       
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../../../examples/tutorials/basic-installation/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../tutorials/basic-installation/" class="md-tabs__link">
           
   
   Examples
@@ -396,8 +398,6 @@
         <div class="md-main__inner md-grid">
           
             
-              
-                
               
               <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
                 <div class="md-sidebar__scrollwrap">
@@ -493,19 +493,19 @@
       
   
   
-    
-  
   
     
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
         
           <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
@@ -518,7 +518,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             Configuration
@@ -531,7 +531,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../environment/" class="md-nav__link">
+      <a href="../../../config/environment/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -551,7 +551,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../user-management/" class="md-nav__link">
+      <a href="../../../config/user-management/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -607,7 +607,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../best-practices/dkim_dmarc_spf/" class="md-nav__link">
+      <a href="../../../config/best-practices/dkim_dmarc_spf/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -627,7 +627,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../best-practices/autodiscover/" class="md-nav__link">
+      <a href="../../../config/best-practices/autodiscover/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -653,19 +653,19 @@
                 
   
   
-    
-  
   
     
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_4" checked>
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_4" >
         
           <label class="md-nav__link" for="__nav_4_4" id="__nav_4_4_label" tabindex="0">
             
@@ -678,7 +678,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_4_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_4_4">
             <span class="md-nav__icon md-icon"></span>
             Security
@@ -691,7 +691,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../understanding-the-ports/" class="md-nav__link">
+      <a href="../../../config/security/understanding-the-ports/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -711,7 +711,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../ssl/" class="md-nav__link">
+      <a href="../../../config/security/ssl/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -729,27 +729,9 @@
                 
   
   
-    
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  <span class="md-ellipsis">
-    Fail2Ban
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../../../config/security/fail2ban/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -758,79 +740,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#configuration" class="md-nav__link">
-    Configuration
-  </a>
-  
-    <nav class="md-nav" aria-label="Configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#dms-defaults" class="md-nav__link">
-    DMS Defaults
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-files" class="md-nav__link">
-    Custom Files
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#viewing-all-bans" class="md-nav__link">
-    Viewing All Bans
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#managing-bans" class="md-nav__link">
-    Managing Bans
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#viewing-the-log-file" class="md-nav__link">
-    Viewing the Log File
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#running-inside-a-rootless-container" class="md-nav__link">
-    Running Inside A Rootless Container
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -842,7 +751,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../mail_crypt/" class="md-nav__link">
+      <a href="../../../config/security/mail_crypt/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -862,7 +771,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../rspamd/" class="md-nav__link">
+      <a href="../../../config/security/rspamd/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -890,7 +799,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../debugging/" class="md-nav__link">
+      <a href="../../../config/debugging/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -910,7 +819,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../pop3/" class="md-nav__link">
+      <a href="../../../config/pop3/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -930,7 +839,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../setup.sh/" class="md-nav__link">
+      <a href="../../../config/setup.sh/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -986,7 +895,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/optional-config/" class="md-nav__link">
+      <a href="../../../config/advanced/optional-config/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1042,7 +951,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/maintenance/update-and-cleanup/" class="md-nav__link">
+      <a href="../../../config/advanced/maintenance/update-and-cleanup/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1106,7 +1015,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/override-defaults/dovecot/" class="md-nav__link">
+      <a href="../../../config/advanced/override-defaults/dovecot/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1126,7 +1035,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/override-defaults/postfix/" class="md-nav__link">
+      <a href="../../../config/advanced/override-defaults/postfix/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1146,7 +1055,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/override-defaults/user-patches/" class="md-nav__link">
+      <a href="../../../config/advanced/override-defaults/user-patches/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1174,7 +1083,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/auth-ldap/" class="md-nav__link">
+      <a href="../../../config/advanced/auth-ldap/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1194,7 +1103,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/mail-sieve/" class="md-nav__link">
+      <a href="../../../config/advanced/mail-sieve/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1214,7 +1123,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/mail-fetchmail/" class="md-nav__link">
+      <a href="../../../config/advanced/mail-fetchmail/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1234,7 +1143,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/mail-getmail/" class="md-nav__link">
+      <a href="../../../config/advanced/mail-getmail/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1290,7 +1199,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/mail-forwarding/relay-hosts/" class="md-nav__link">
+      <a href="../../../config/advanced/mail-forwarding/relay-hosts/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1310,7 +1219,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/mail-forwarding/aws-ses/" class="md-nav__link">
+      <a href="../../../config/advanced/mail-forwarding/aws-ses/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1338,7 +1247,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/full-text-search/" class="md-nav__link">
+      <a href="../../../config/advanced/full-text-search/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1358,7 +1267,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/kubernetes/" class="md-nav__link">
+      <a href="../../../config/advanced/kubernetes/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1378,7 +1287,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/ipv6/" class="md-nav__link">
+      <a href="../../../config/advanced/ipv6/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1398,7 +1307,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/podman/" class="md-nav__link">
+      <a href="../../../config/advanced/podman/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1418,7 +1327,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../advanced/dovecot-master-accounts/" class="md-nav__link">
+      <a href="../../../config/advanced/dovecot-master-accounts/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1451,19 +1360,19 @@
       
   
   
+    
+  
   
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
@@ -1476,7 +1385,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             Examples
@@ -1525,7 +1434,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../examples/tutorials/basic-installation/" class="md-nav__link">
+      <a href="../../tutorials/basic-installation/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1545,7 +1454,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../examples/tutorials/mailserver-behind-proxy/" class="md-nav__link">
+      <a href="../../tutorials/mailserver-behind-proxy/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1565,7 +1474,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../examples/tutorials/docker-build/" class="md-nav__link">
+      <a href="../../tutorials/docker-build/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1585,7 +1494,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../examples/tutorials/blog-posts/" class="md-nav__link">
+      <a href="../../tutorials/blog-posts/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1611,19 +1520,19 @@
                 
   
   
+    
+  
   
     
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
       
         
         
         
         
-          
-        
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_2" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_2" checked>
         
           <label class="md-nav__link" for="__nav_5_2" id="__nav_5_2_label" tabindex="0">
             
@@ -1636,7 +1545,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_2_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_5_2">
             <span class="md-nav__icon md-icon"></span>
             Use Cases
@@ -1649,7 +1558,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../examples/use-cases/forward-only-mailserver-with-ldap-authentication/" class="md-nav__link">
+      <a href="../forward-only-mailserver-with-ldap-authentication/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1669,7 +1578,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../examples/use-cases/imap-folders/" class="md-nav__link">
+      <a href="../imap-folders/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1687,9 +1596,27 @@
                 
   
   
+    
   
-    <li class="md-nav__item">
-      <a href="../../../examples/use-cases/ios-mail-push-support/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    iOS Mail Push Support
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   <span class="md-ellipsis">
@@ -1698,6 +1625,66 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#introduction" class="md-nav__link">
+    Introduction
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    Prerequisites
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    Limitations
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#privacy-concerns" class="md-nav__link">
+    Privacy concerns
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    Installation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-configuration-options" class="md-nav__link">
+    Other configuration options
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1886,9 +1873,7 @@
             
             
               
-                
-              
-              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" hidden>
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
                 <div class="md-sidebar__scrollwrap">
                   <div class="md-sidebar__inner">
                     
@@ -1905,56 +1890,43 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#configuration" class="md-nav__link">
-    Configuration
+  <a href="#introduction" class="md-nav__link">
+    Introduction
   </a>
-  
-    <nav class="md-nav" aria-label="Configuration">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#dms-defaults" class="md-nav__link">
-    DMS Defaults
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#custom-files" class="md-nav__link">
-    Custom Files
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#viewing-all-bans" class="md-nav__link">
-    Viewing All Bans
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#managing-bans" class="md-nav__link">
-    Managing Bans
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#viewing-the-log-file" class="md-nav__link">
-    Viewing the Log File
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#running-inside-a-rootless-container" class="md-nav__link">
-    Running Inside A Rootless Container
+  <a href="#prerequisites" class="md-nav__link">
+    Prerequisites
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#limitations" class="md-nav__link">
+    Limitations
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#privacy-concerns" class="md-nav__link">
+    Privacy concerns
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    Installation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#other-configuration-options" class="md-nav__link">
+    Other configuration options
   </a>
   
 </li>
@@ -1974,7 +1946,7 @@
                   
 
   
-    <a href="https://github.com/docker-mailserver/docker-mailserver/edit/master/docs/content/config/security/fail2ban.md" title="Edit this page" class="md-content__button md-icon">
+    <a href="https://github.com/docker-mailserver/docker-mailserver/edit/master/docs/content/examples/use-cases/ios-mail-push-support.md" title="Edit this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4v-2m10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1 2.1 2.1Z"/></svg>
     </a>
@@ -1983,106 +1955,239 @@
     
       
     
-    <a href="https://github.com/docker-mailserver/docker-mailserver/raw/master/docs/content/config/security/fail2ban.md" title="View source of this page" class="md-content__button md-icon">
+    <a href="https://github.com/docker-mailserver/docker-mailserver/raw/master/docs/content/examples/use-cases/ios-mail-push-support.md" title="View source of this page" class="md-content__button md-icon">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 18c.56 0 1 .44 1 1s-.44 1-1 1-1-.44-1-1 .44-1 1-1m0-3c-2.73 0-5.06 1.66-6 4 .94 2.34 3.27 4 6 4s5.06-1.66 6-4c-.94-2.34-3.27-4-6-4m0 6.5a2.5 2.5 0 0 1-2.5-2.5 2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-2.5 2.5M9.27 20H6V4h7v5h5v4.07c.7.08 1.36.25 2 .49V8l-6-6H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h4.5a8.15 8.15 0 0 1-1.23-2Z"/></svg>
     </a>
   
 
 
-  <h1>Fail2Ban</h1>
+  <h1>iOS Mail Push Support</h1>
 
-<div class="admonition quote">
-<p class="admonition-title">What is Fail2Ban (F2B)?</p>
-<p>Fail2ban is an intrusion prevention software framework. Written in the Python programming language, it is designed to prevent against brute-force attacks. It is able to run on POSIX systems that have an interface to a packet-control system or firewall installed locally, such as [NFTables] or TCP Wrapper.</p>
-<p><a href="https://en.wikipedia.org/wiki/Fail2ban">Source</a></p>
-</div>
-<h2 id="configuration"><a class="toclink" href="#configuration">Configuration</a></h2>
-<div class="admonition warning">
-<p class="admonition-title">Warning</p>
-<p>DMS must be launched with the <code>NET_ADMIN</code> capability in order to be able to install the NFTables rules that actually ban IP addresses. Thus, either include <code>--cap-add=NET_ADMIN</code> in the <code>docker run</code> command, or the equivalent in the <code>compose.yaml</code>:</p>
-<div class="highlight"><pre><span></span><code><span class="nt">cap_add</span><span class="p">:</span>
-<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NET_ADMIN</span>
-</code></pre></div>
-</div>
-<div class="admonition bug">
-<p class="admonition-title">Running Fail2Ban on Older Kernels</p>
-<p>DMS configures F2B to use NFTables, not IPTables (legacy). We have observed that older systems, for example NAS systems, do not support the modern NFTables rules. You will need to configure F2B to use legacy IPTables again, for example with the <a href="https://github.com/docker-mailserver/docker-mailserver/blob/master/config-examples/fail2ban-jail.cf"><code>fail2ban-jail.cf</code></a>, see the <a href="#custom-files">section on configuration further down below</a>.</p>
-</div>
-<h3 id="dms-defaults"><a class="toclink" href="#dms-defaults">DMS Defaults</a></h3>
-<p>DMS will automatically ban IP addresses of hosts that have generated 6 failed attempts over the course of the last week. The bans themselves last for one week. The Postfix jail is configured to use <code>mode = extra</code> in DMS.</p>
-<h3 id="custom-files"><a class="toclink" href="#custom-files">Custom Files</a></h3>
-<div class="admonition question">
-<p class="admonition-title">What is <a href="../../../faq/#what-about-the-docker-datadmsconfig-directory"><code>docker-data/dms/config/</code></a>?</p>
-</div>
-<p>This following configuration files inside the <code>docker-data/dms/config/</code> volume will be copied inside the container during startup</p>
+<h2 id="introduction"><a class="toclink" href="#introduction">Introduction</a></h2>
+<p>iOS Mail currently does not support the IMAP idle extension. Therefore users can only either check manually or configure intervals for fetching mails in their mail account preferences when using the default configuration.</p>
+<p>To support mail push Dovecot needs to advertise the <code>XAPPLEPUSHSERVICE</code> IMAP extension as well as sending the actual push notifications to the Apple Push Notification service (APNs) which will forward them to the device.</p>
+<p>This can be done with two components:</p>
+<ul>
+<li>A Dovecot plugin (<code>dovecot-xaps-plugin</code>) which is triggered whenever a mail is created or moved from/to a mail folder.</li>
+<li>A daemon service (<code>dovecot-xaps-daemon</code>) that manages both the device registrations as well as sending notifications to the APNs.</li>
+</ul>
+<h2 id="prerequisites"><a class="toclink" href="#prerequisites">Prerequisites</a></h2>
+<ul>
+<li>An Apple developer account to create the required Apple Push Notification service certificate.</li>
+<li>Knowledge creating Docker images, using the command-line, and creating shell scripts.</li>
+</ul>
+<h2 id="limitations"><a class="toclink" href="#limitations">Limitations</a></h2>
+<ul>
+<li>You need to maintain a custom <code>docker-mailserver</code> image.</li>
+<li>Push support is limited to the INBOX folder. Changes to other folders will not be pushed to the device regardless of the configuration settings.</li>
+<li>You currently cannot use the same account UUID on multiple devices. This means that if you use the same backup on multiple devices (e.g. old phone / new phone) only one of them will get the notification. Use different backups or recreate the mail account.</li>
+</ul>
+<h2 id="privacy-concerns"><a class="toclink" href="#privacy-concerns">Privacy concerns</a></h2>
+<ul>
+<li>The service does not send any part of the actual message to Apple.</li>
+<li>The information sent contains the device UUID to notify and the (on-device) account UUID which was generated by the iOS mail application when creating the account.</li>
+<li>Upon receiving the notification, the iOS mail application will connect to the IMAP server given by the provided account UUID and fetch the mail to notify the user.</li>
+<li>Apple therefore does not know the mail address for which the mail was received, only that a specific account on a specific device should be notified that a new mail or that a mail was moved to the INBOX folder.</li>
+</ul>
+<h2 id="installation"><a class="toclink" href="#installation">Installation</a></h2>
+<p>Both components will be built using Docker and included into a custom <code>docker-mailserver</code> image. Afterwards the required configuration is added to <code>docker-data/dms/config</code>. The registration data is stored in <code>/var/mail-state/lib-xapsd</code>.</p>
 <ol>
-<li><code>fail2ban-jail.cf</code> is copied to <code>/etc/fail2ban/jail.d/user-jail.local</code><ul>
-<li>with this file, you can adjust the configuration of individual jails and their defaults</li>
-<li>there is an example provided <a href="https://github.com/docker-mailserver/docker-mailserver/blob/master/config-examples/fail2ban-jail.cf">in our repository on GitHub</a></li>
+<li>
+<p>Create a Dockerfile to build a <code>docker-mailserver</code> image that includes the <a href="https://github.com/freswa/dovecot-xaps-plugin"><code>dovecot-xaps-plugin</code></a> as well as the <a href="https://github.com/freswa/dovecot-xaps-daemon"><code>dovecot-xaps-daemon</code></a>. This is required to ensure that the Dovecot plugin is built against the same Dovecot version. The <code>:edge</code> tag is used here, but you might want to use a released version instead.</p>
+<div class="highlight"><pre><span></span><code><span class="k">FROM</span><span class="w"> </span><span class="s">mailserver/docker-mailserver:edge</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">dovecot-plugin-xaps</span>
+<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/tmp/dovecot-xaps-plugin</span>
+<span class="k">RUN</span><span class="w"> </span>&lt;&lt;EOF
+<span class="w">    </span>apt-get<span class="w"> </span>update
+<span class="w">    </span>apt-get<span class="w"> </span>-y<span class="w"> </span>--no-install-recommends<span class="w"> </span>install<span class="w"> </span>git<span class="w"> </span>cmake<span class="w"> </span>make<span class="w"> </span>build-essential<span class="w"> </span>dovecot-dev
+<span class="w">    </span>git<span class="w"> </span>clone<span class="w"> </span>--single-branch<span class="w"> </span>--depth<span class="o">=</span><span class="m">1</span><span class="w"> </span>https://github.com/freswa/dovecot-xaps-plugin.git<span class="w"> </span>.
+<span class="w">    </span>mkdir<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>build
+<span class="w">    </span>cmake<span class="w"> </span>..<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release
+<span class="w">    </span>make<span class="w"> </span>install
+EOF
+
+<span class="c"># Use an older Go version as Go &gt;= 1.20 causes this issue: https://github.com/freswa/dovecot-xaps-daemon/issues/24#issuecomment-1483876081</span>
+<span class="c"># Note that the underlying issue are non-standard-compliant Apple http servers which might get fixed at some point</span>
+<span class="k">FROM</span><span class="w"> </span><span class="s">golang:1.19-alpine</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="s">dovecot-xaps-daemon</span>
+<span class="k">ENV</span><span class="w"> </span><span class="nv">GOPROXY</span><span class="o">=</span>https://proxy.golang.org,direct
+<span class="k">ENV</span><span class="w"> </span><span class="nv">CGO_ENABLED</span><span class="o">=</span><span class="m">0</span>
+<span class="k">WORKDIR</span><span class="w"> </span><span class="s">/go/dovecot-xaps-daemon</span>
+<span class="k">RUN</span><span class="w"> </span>&lt;&lt;EOF
+<span class="w">    </span>apk<span class="w"> </span>add<span class="w"> </span>--no-cache<span class="w"> </span>--virtual<span class="w"> </span>build-dependencies<span class="w"> </span>git
+<span class="w">    </span>git<span class="w"> </span>clone<span class="w"> </span>--single-branch<span class="w"> </span>--depth<span class="o">=</span><span class="m">1</span><span class="w"> </span>https://github.com/freswa/dovecot-xaps-daemon<span class="w"> </span>.
+<span class="w">    </span>go<span class="w"> </span>build<span class="w"> </span>./cmd/xapsd
+EOF
+
+<span class="k">FROM</span><span class="w"> </span><span class="s">mailserver/docker-mailserver:edge</span>
+<span class="k">COPY</span><span class="w"> </span>--from<span class="o">=</span>dovecot-plugin-xaps<span class="w"> </span>/usr/lib/dovecot/modules/*_xaps_*<span class="w"> </span>/usr/lib/dovecot/modules/
+<span class="k">COPY</span><span class="w"> </span>--from<span class="o">=</span>dovecot-xaps-daemon<span class="w"> </span>/go/dovecot-xaps-daemon/xapsd<span class="w"> </span>/usr/bin/xapsd
+
+<span class="c"># create a non-root user for the daemon process as well as configuration and run state directories</span>
+<span class="k">RUN</span><span class="w"> </span>&lt;&lt;EOF
+<span class="w">    </span>adduser<span class="w"> </span>--quiet<span class="w"> </span>--system<span class="w"> </span>--group<span class="w"> </span>--disabled-password<span class="w"> </span>--home<span class="w"> </span>/var/mail-state/lib-xapsd<span class="w"> </span>--no-create-home<span class="w"> </span>xapsd
+<span class="w">    </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/var/run/xapsd<span class="w"> </span>/etc/xapsd
+EOF
+</code></pre></div>
+</li>
+<li>
+<p>Build the new image:
+    <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>yourname/docker-mailserver<span class="w"> </span>.
+</code></pre></div></p>
+</li>
+<li>
+<p>Modify your <code>compose.yaml</code> to use the newly created image:
+    <div class="highlight"><pre><span></span><code><span class="w">    </span><span class="nt">services</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">mailserver</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">yourname/docker-mailserver:latest</span>
+</code></pre></div></p>
+</li>
+<li>
+<p>Recreate the container:
+    <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>compose<span class="w"> </span>down
+docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</code></pre></div></p>
+</li>
+<li>
+<p>Create a hash of your Apple developer account password using the provided <code>xapsd -pass</code> command:
+    <div class="highlight"><pre><span></span><code>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>-it<span class="w"> </span>mailserver<span class="w"> </span>xapsd<span class="w"> </span>-pass
+</code></pre></div></p>
+</li>
+<li>
+<p>Add configuration for both components:</p>
+<ul>
+<li>
+<p>Create a folder named <code>xaps</code> in <code>docker-data/dms/config</code>.</p>
+</li>
+<li>
+<p>Create a file named <code>xapsd.yaml</code> in <code>docker-data/dms/config/xaps</code>. </p>
+<ul>
+<li>Replace <code>appleId</code> and <code>appleIdHashedPassword</code> with your actual credentials. For reference see also <a href="https://github.com/freswa/dovecot-xaps-daemon/blob/master/configs/xapsd/xapsd.yaml">here</a>.</li>
+<li>The service will use the provided username/hash combination to automatically request a new certificate from Apple as well as renewing an older certificate if needed.</li>
+</ul>
+<div class="highlight"><span class="filename">xapsd.yaml</span><pre><span></span><code><span class="c1"># set the loglevel to either</span>
+<span class="c1"># trace, debug, error, fatal, info, panic or warn</span>
+<span class="c1"># Default: info</span>
+<span class="nt">loglevel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
+
+<span class="c1"># xapsd creates a json file to store the registration persistent on disk.</span>
+<span class="c1"># This sets the location of the file.</span>
+<span class="nt">databaseFile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/mail-state/lib-xapsd/database.json</span>
+
+<span class="c1"># xapsd listens on a socket for http/https requests from the dovecot plugin.</span>
+<span class="c1"># This sets the address and port number of the listen socket.</span>
+<span class="nt">listenAddr</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;127.0.0.1&#39;</span>
+<span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">11619</span>
+
+<span class="c1"># xapsd is able to listen on a HTTPS Socket to allow HTTP/2 to be used</span>
+<span class="c1"># SSL is enabled implicitly when certfile and keyfile exist</span>
+<span class="c1"># !!! only use HTTPS for connection pooling with a proxy e.g. nginx or HaProxy</span>
+<span class="c1"># !!! direct usage with the plugin is discouraged and unsupported</span>
+<span class="nt">tlsCertfile</span><span class="p">:</span>
+<span class="nt">tlsKeyfile</span><span class="p">:</span>
+<span class="nt">tlsListenAddr</span><span class="p">:</span>
+<span class="nt">tlsPort</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">11620</span>
+
+<span class="c1"># Notifications that are not initiated by new messages are not sent immediately for two reasons:</span>
+<span class="c1"># 1. When you move/copy/delete messages you most likely move/copy/delete more messages within a short period of time.</span>
+<span class="c1"># 2. You don&#39;t need your mailboxes to synchronize immediately since they are automatically synchronized when opening</span>
+<span class="c1">#    the app</span>
+<span class="c1"># If a new message comes and the move/copy/delete notification is still on hold it will be sent with the notification</span>
+<span class="c1"># for the new message.</span>
+<span class="c1"># This sets the interval to check for delayed messages.</span>
+<span class="nt">checkInterval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span>
+
+<span class="c1"># Set the time how long notifications for not-new messages should be delayed until they are sent.</span>
+<span class="c1"># Whenever checkInterval runs, it checks if &quot;delay&quot; &lt;= &quot;waiting time&quot; and sends the notification if the expression is</span>
+<span class="c1"># true.</span>
+<span class="nt">delay</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
+
+<span class="c1"># To retrieve certificates from Apple, we need to login with a valid Apple ID</span>
+<span class="c1"># The accounts email must be given in cleartext, but the password has to</span>
+<span class="c1"># be hashed before sending it. To not leak working credentials on running servers,</span>
+<span class="c1"># we do not accept the cleartext password here.</span>
+<span class="nt">appleId</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">foo@example.com</span>
+
+<span class="c1"># use `xaps -pass` to calculate the hash of the apple id password</span>
+<span class="nt">appleIdHashedPassword</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bar</span>
+</code></pre></div>
+</li>
+<li>
+<p>Create a file named <code>95-xaps.conf</code> in <code>docker-data/dms/config/xaps</code>. For reference see also <a href="https://github.com/freswa/dovecot-xaps-plugin/blob/master/xaps.conf">here</a>.
+    <div class="highlight"><span class="filename">95-xaps.conf</span><pre><span></span><code>protocol imap {
+  mail_plugins = $mail_plugins notify push_notification xaps_push_notification xaps_imap
+}
+
+protocol lda {
+  mail_plugins = $mail_plugins notify push_notification xaps_push_notification
+}
+
+protocol lmtp {
+  mail_plugins = $mail_plugins notify push_notification xaps_push_notification
+}
+
+plugin {
+    # xaps_config contains xaps specific configuration parameters
+    # url:              protocol, hostname and port under which xapsd listens
+    # user_lookup: Use if you want to determine the username used for PNs from environment variables provided by
+    #                   login mechanism. Value is variable name to look up.
+    # max_retries:      maximum num of retries the http client connects to the xaps daemon
+    # timeout_msecs     http timeout of the http connection
+    xaps_config = url=http://127.0.0.1:11619 user_lookup=theattribute max_retries=6 timeout_msecs=5000
+    push_notification_driver = xaps
+}
+</code></pre></div></p>
+</li>
+<li>
+<p>Create a supervisord file named <code>xapsd.conf</code> in <code>docker-data/dms/config/xaps</code> with the following content:
+    <div class="highlight"><span class="filename">xapsd.conf</span><pre><span></span><code>[program:xapsd]
+startsecs=0
+autostart=false
+autorestart=true
+stdout_logfile=/var/log/supervisor/%(program_name)s.log
+stderr_logfile=/var/log/supervisor/%(program_name)s.log
+user=xapsd
+command=/usr/bin/xapsd
+pidfile=/var/run/xapsd/xapsd.pid
+</code></pre></div></p>
+</li>
+<li>
+<p>Create or update your <code>user-patches.sh</code> in <code>docker-data/dms/config</code> to move the files to their final location as well as starting the daemon service:
+    <div class="highlight"><span class="filename">user-patches.sh</span><pre><span></span><code><span class="ch">#!/bin/bash</span>
+
+<span class="c1"># Copy the configs to internal locations:</span>
+cp<span class="w"> </span>/tmp/docker-mailserver/xaps/95-xaps.conf<span class="w"> </span>/etc/dovecot/conf.d/95-xaps.conf
+cp<span class="w"> </span>/tmp/docker-mailserver/xaps/xapsd.yaml<span class="w"> </span>/etc/xapsd/xapsd.yaml
+cp<span class="w"> </span>/tmp/docker-mailserver/xaps/xapsd.conf<span class="w"> </span>/etc/supervisor/conf.d/xapsd.conf
+
+<span class="c1"># Setup data persistence and ensure ownership is always for xapsd:</span>
+mkdir<span class="w"> </span>-p<span class="w"> </span>/var/mail-state/lib-xapsd
+chown<span class="w"> </span>-R<span class="w"> </span>xapsd:xapsd<span class="w"> </span>/var/mail-state/lib-xapsd
+
+<span class="c1"># Start the xaps daemon:</span>
+supervisorctl<span class="w"> </span>update
+supervisorctl<span class="w"> </span>start<span class="w"> </span>xapsd
+</code></pre></div></p>
+</li>
 </ul>
 </li>
-<li><code>fail2ban-fail2ban.cf</code> is copied to <code>/etc/fail2ban/fail2ban.local</code><ul>
-<li>with this file, you can adjust F2B behavior in general</li>
-<li>there is an example provided <a href="https://github.com/docker-mailserver/docker-mailserver/blob/master/config-examples/fail2ban-fail2ban.cf">in our repository on GitHub</a></li>
-</ul>
+<li>
+<p>Recreate the container again to apply the new configuration:
+    <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>compose<span class="w"> </span>down
+docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d
+</code></pre></div></p>
+</li>
+<li>
+<p>Recreate your mail account on your iOS device and check the logs in <code>/var/log/supervisor/dovecot.log</code> and <code>/var/log/supervisor/xapsd.log</code> for any errors.</p>
 </li>
 </ol>
-<h3 id="viewing-all-bans"><a class="toclink" href="#viewing-all-bans">Viewing All Bans</a></h3>
-<p>When just running</p>
-<div class="highlight"><pre><span></span><code>setup<span class="w"> </span>fail2ban
+<h2 id="other-configuration-options"><a class="toclink" href="#other-configuration-options">Other configuration options</a></h2>
+<p>Both device registration and notifications send a username to the daemon to lookup the device. While the registration and other IMAP operations in Dovecot will send the Dovecot username, LMTP will send the provided authentication username.</p>
+<p>The format of that username is specified by the <code>auth_username_format</code> Dovecot setting. If you are not using mail addresses as Dovecot usernames - e.g. when using LDAP - you can either change the <code>auth_username_format</code> or add the mail address as property to the user account and use the lookup feature (see below).</p>
+<div class="highlight"><span class="filename">user-patches.sh</span><pre><span></span><code>sed<span class="w"> </span>-i<span class="w"> </span>-r<span class="w"> </span><span class="s2">&quot;s|^#?(auth_username_format =).*|\1 %Ln|&quot;</span><span class="w"> </span>/etc/dovecot/conf.d/10-auth.conf
 </code></pre></div>
-<p>the script will show all banned IP addresses.</p>
-<p>To get a more detailed <code>status</code> view, run</p>
-<div class="highlight"><pre><span></span><code>setup<span class="w"> </span>fail2ban<span class="w"> </span>status
-</code></pre></div>
-<h3 id="managing-bans"><a class="toclink" href="#managing-bans">Managing Bans</a></h3>
-<p>You can manage F2B with the <code>setup</code> script. The usage looks like this:</p>
-<div class="highlight"><pre><span></span><code>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>&lt;CONTAINER<span class="w"> </span>NAME&gt;<span class="w"> </span>setup<span class="w"> </span>fail2ban<span class="w"> </span><span class="o">[</span>&lt;ban<span class="p">|</span>unban&gt;<span class="w"> </span>&lt;IP&gt;<span class="o">]</span>
-</code></pre></div>
-<h3 id="viewing-the-log-file"><a class="toclink" href="#viewing-the-log-file">Viewing the Log File</a></h3>
-<div class="highlight"><pre><span></span><code>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>&lt;CONTAINER<span class="w"> </span>NAME&gt;<span class="w"> </span>setup<span class="w"> </span>fail2ban<span class="w"> </span>log
-</code></pre></div>
-<h2 id="running-inside-a-rootless-container"><a class="toclink" href="#running-inside-a-rootless-container">Running Inside A Rootless Container</a></h2>
-<p><a href="https://github.com/rootless-containers/rootlesskit"><code>RootlessKit</code></a> is the <em>fakeroot</em> implementation for supporting <em>rootless mode</em> in Docker and Podman. By default, RootlessKit uses the <a href="https://github.com/rootless-containers/rootlesskit/blob/v0.14.5/docs/port.md#port-drivers"><code>builtin</code> port forwarding driver</a>, which does not propagate source IP addresses.</p>
-<p>It is necessary for F2B to have access to the real source IP addresses in order to correctly identify clients. This is achieved by changing the port forwarding driver to <a href="https://github.com/rootless-containers/slirp4netns"><code>slirp4netns</code></a>, which is slower than the builtin driver but does preserve the real source IPs.</p>
-<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Docker</label><label for="__tabbed_1_2">Podman</label></div>
-<div class="tabbed-content">
-<div class="tabbed-block">
-<p>For <a href="https://docs.docker.com/engine/security/rootless">rootless mode</a> in Docker, create <code>~/.config/systemd/user/docker.service.d/override.conf</code> with the following content:</p>
-<div class="admonition danger inline end">
-<p class="admonition-title">Danger</p>
-<p>This changes the port driver for all rootless containers managed by Docker. Per container configuration is not supported, if you need that consider Podman instead.</p>
-</div>
-<div class="highlight"><pre><span></span><code><span class="k">[Service]</span>
-<span class="na">Environment</span><span class="o">=</span><span class="s">&quot;DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER=slirp4netns&quot;</span>
-</code></pre></div>
-<p>And then restart the daemon:</p>
-<div class="highlight"><pre><span></span><code><span class="gp">$ </span>systemctl<span class="w"> </span>--user<span class="w"> </span>daemon-reload
-<span class="gp">$ </span>systemctl<span class="w"> </span>--user<span class="w"> </span>restart<span class="w"> </span>docker
-</code></pre></div>
-</div>
-<div class="tabbed-block">
-<p><a href="https://github.com/containers/podman/blob/v3.4.1/docs/source/markdown/podman-run.1.md#--networkmode---net">Rootless Podman</a> requires adding the value <code>slirp4netns:port_handler=slirp4netns</code> to the <code>--network</code> CLI option, or <code>network_mode</code> setting in your <code>compose.yaml</code>:</p>
-<div class="admonition example">
-<p class="admonition-title">Example</p>
-<div class="highlight"><pre><span></span><code><span class="nt">services</span><span class="p">:</span>
-<span class="w">  </span><span class="nt">mailserver</span><span class="p">:</span>
-<span class="w">    </span><span class="nt">network_mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;slirp4netns:port_handler=slirp4netns&quot;</span>
-<span class="w">    </span><span class="nt">environment</span><span class="p">:</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ENABLE_FAIL2BAN=1</span>
-<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NETWORK_INTERFACE=tap0</span>
-<span class="w">      </span><span class="l l-Scalar l-Scalar-Plain">...</span>
-</code></pre></div>
-</div>
-<p>You must also add the ENV <code>NETWORK_INTERFACE=tap0</code>, because Podman uses a <a href="https://github.com/containers/podman/blob/v3.4.1/libpod/networking_slirp4netns.go#L264">hard-coded interface name</a> for <code>slirp4netns</code>. <code>slirp4netns</code> is not compatible with user-defined networks!</p>
-</div>
-</div>
-</div>
+<p>You can also use notifications for Dovecot alias mailboxes. Depending on your server configuration, this might require to add the original Dovecot username as <a href="https://doc.dovecot.org/configuration_manual/authentication/user_database_extra_fields/">Dovecot attribute</a> to the login user as well as changing the <code>user_lookup=theattribute</code> in <code>95-xaps.conf</code> to perform the lookup of that attribute.</p>
 
 
-
-  
 
 
 
