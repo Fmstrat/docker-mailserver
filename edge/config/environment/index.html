@@ -22,7 +22,7 @@
       
       
       <link rel="icon" href="../../assets/logo/favicon-32x32.png">
-      <meta name="generator" content="mkdocs-1.5.2, mkdocs-material-9.2.6">
+      <meta name="generator" content="mkdocs-1.5.2, mkdocs-material-9.2.8">
     
     
       
@@ -30,7 +30,7 @@
       
     
     
-      <link rel="stylesheet" href="../../assets/stylesheets/main.0e669242.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.046329b4.min.css">
       
         
         <link rel="stylesheet" href="../../assets/stylesheets/palette.85d0ee34.min.css">
@@ -595,6 +595,20 @@
           <li class="md-nav__item">
   <a href="#supervisor_loglevel" class="md-nav__link">
     SUPERVISOR_LOGLEVEL
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dms_vmail_uid" class="md-nav__link">
+    DMS_VMAIL_UID
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dms_vmail_gid" class="md-nav__link">
+    DMS_VMAIL_GID
   </a>
   
 </li>
@@ -2891,6 +2905,20 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#dms_vmail_uid" class="md-nav__link">
+    DMS_VMAIL_UID
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dms_vmail_gid" class="md-nav__link">
+    DMS_VMAIL_GID
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#one_dir" class="md-nav__link">
     ONE_DIR
   </a>
@@ -3934,6 +3962,12 @@
 <li>debug    =&gt; Also show debug messages</li>
 </ul>
 <p>The log-level will show everything in its class and above.</p>
+<h5 id="dms_vmail_uid"><a class="toclink" href="#dms_vmail_uid">DMS_VMAIL_UID</a></h5>
+<p>Default: 5000</p>
+<p>The User ID assigned to the static vmail user for <code>/var/mail</code> (<em>Mail storage managed by Dovecot</em>).</p>
+<h5 id="dms_vmail_gid"><a class="toclink" href="#dms_vmail_gid">DMS_VMAIL_GID</a></h5>
+<p>Default: 5000</p>
+<p>The Group ID assigned to the static vmail group for <code>/var/mail</code> (<em>Mail storage managed by Dovecot</em>).</p>
 <h5 id="one_dir"><a class="toclink" href="#one_dir">ONE_DIR</a></h5>
 <ul>
 <li>0 =&gt; state in default directories.</li>
@@ -4406,8 +4440,8 @@ If this is not set and reports are enabled with the old options, logrotate will 
 <h5 id="ldap_server_host"><a class="toclink" href="#ldap_server_host">LDAP_SERVER_HOST</a></h5>
 <ul>
 <li><strong>empty</strong> =&gt; mail.example.com</li>
-<li>=&gt; Specify the dns-name/ip-address where the ldap-server is listening, or an URI like <code>ldaps://mail.example.com</code></li>
-<li>NOTE: If you going to use DMS in combination with <code>compose.yaml</code> you can set the service name here</li>
+<li>=&gt; Specify the <code>&lt;dns-name&gt;</code> / <code>&lt;ip-address&gt;</code> where the LDAP server is reachable via a URI like: <code>ldaps://mail.example.com</code>.</li>
+<li>Note: You must include the desired URI scheme (<code>ldap://</code>, <code>ldaps://</code>, <code>ldapi://</code>).</li>
 </ul>
 <h5 id="ldap_search_base"><a class="toclink" href="#ldap_search_base">LDAP_SEARCH_BASE</a></h5>
 <ul>
@@ -4479,9 +4513,8 @@ If this is not set and reports are enabled with the old options, logrotate will 
 <h5 id="dovecot_uris"><a class="toclink" href="#dovecot_uris">DOVECOT_URIS</a></h5>
 <ul>
 <li><strong>empty</strong> =&gt; same as <code>LDAP_SERVER_HOST</code></li>
-<li>=&gt; Specify a space separated list of LDAP uris.</li>
-<li>Note: If the protocol is missing, <code>ldap://</code> will be used.</li>
-<li>Note: This deprecates <code>DOVECOT_HOSTS</code> (as it didn't allow to use LDAPS), which is currently still supported for backwards compatibility.</li>
+<li>=&gt; Specify a space separated list of LDAP URIs.</li>
+<li>Note: You must include the desired URI scheme (<code>ldap://</code>, <code>ldaps://</code>, <code>ldapi://</code>).</li>
 </ul>
 <h5 id="dovecot_ldap_version"><a class="toclink" href="#dovecot_ldap_version">DOVECOT_LDAP_VERSION</a></h5>
 <ul>
@@ -4568,7 +4601,7 @@ If this is not set and reports are enabled with the old options, logrotate will 
 <h5 id="saslauthd_ldap_server"><a class="toclink" href="#saslauthd_ldap_server">SASLAUTHD_LDAP_SERVER</a></h5>
 <ul>
 <li><strong>empty</strong> =&gt; same as <code>LDAP_SERVER_HOST</code></li>
-<li>Note: since version 10.0.0, you can specify a protocol here (like ldaps://); this deprecates SASLAUTHD_LDAP_SSL.</li>
+<li>Note: You must include the desired URI scheme (<code>ldap://</code>, <code>ldaps://</code>, <code>ldapi://</code>).</li>
 </ul>
 <h5 id="saslauthd_ldap_start_tls"><a class="toclink" href="#saslauthd_ldap_start_tls">SASLAUTHD_LDAP_START_TLS</a></h5>
 <ul>
@@ -4740,7 +4773,7 @@ you to replace both instead of just the envelope sender.</p>
     <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.tabs", "navigation.top", "navigation.expand", "navigation.instant", "content.action.edit", "content.action.view", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.dfff1995.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
     
     
-      <script src="../../assets/javascripts/bundle.78eede0e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.dff1b7c8.min.js"></script>
       
     
   </body>
